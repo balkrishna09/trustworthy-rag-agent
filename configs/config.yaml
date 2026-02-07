@@ -1,0 +1,58 @@
+# Trustworthy RAG Configuration
+# Copy this file to .env and fill in your values
+
+# ===========================================
+# Model Configuration
+# ===========================================
+
+# Embedding model (choose one)
+EMBEDDING_MODEL: "sentence-transformers/all-MiniLM-L6-v2"
+# Alternative: "BAAI/bge-m3"
+
+# LLM for generation (choose based on available resources)
+LLM_PROVIDER: "openai_compatible"  # Options: ollama, openai, openai_compatible
+LLM_MODEL: "llama3.3:70b"
+
+# NLI model for factual verification
+NLI_MODEL: "facebook/bart-large-mnli"
+# Alternative: "microsoft/deberta-large-mnli"
+
+# ===========================================
+# FARMI/CSC Configuration
+# ===========================================
+FARMI_API_URL: "https://gptlab.rd.tuni.fi/students/ollama/v1"
+FARMI_API_KEY: ""  # Set your API key here or use environment variable
+
+# ===========================================
+# Vector Store Configuration
+# ===========================================
+VECTOR_STORE_TYPE: "faiss"
+FAISS_INDEX_PATH: "data/processed/faiss_index"
+CHUNK_SIZE: 512
+CHUNK_OVERLAP: 50
+TOP_K_RETRIEVAL: 5
+
+# ===========================================
+# Trust Index Configuration
+# ===========================================
+# Weights for Trust Index calculation (must sum to 1.0)
+TRUST_ALPHA: 0.4  # Factuality weight
+TRUST_BETA: 0.35  # Consistency weight
+TRUST_GAMMA: 0.25 # Poisoning probability weight (inverted)
+
+# Thresholds
+POISON_THRESHOLD: 0.7  # Score above this flags as potential poison
+TRUST_THRESHOLD: 0.5   # Minimum trust score to accept response
+
+# ===========================================
+# Experiment Configuration
+# ===========================================
+RANDOM_SEED: 42
+BATCH_SIZE: 32
+MAX_NEW_TOKENS: 512
+
+# ===========================================
+# Logging
+# ===========================================
+LOG_LEVEL: "INFO"
+MLFLOW_TRACKING_URI: "mlruns"

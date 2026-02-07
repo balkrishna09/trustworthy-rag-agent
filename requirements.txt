@@ -1,0 +1,50 @@
+# Trustworthy RAG - Core Dependencies
+# Python 3.10+
+
+# LangChain ecosystem
+langchain>=0.1.0
+langchain-community>=0.1.0
+langchain-huggingface>=0.0.3
+
+# Vector store and embeddings
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+
+# Hugging Face
+transformers>=4.36.0
+accelerate>=0.25.0
+datasets>=2.14.0
+huggingface-hub>=0.19.0
+
+# Deep learning framework
+torch>=2.1.0
+
+# NLI and evaluation
+evaluate>=0.4.1
+nltk>=3.8.1
+spacy>=3.7.2
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+tqdm>=4.66.0
+
+# Experiment tracking
+mlflow>=2.9.0
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+loguru>=0.7.2
+
+# API access (optional)
+openai>=1.6.0
+ollama>=0.1.0
