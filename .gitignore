@@ -133,8 +133,11 @@ Master_Thesis.pdf
 Supervisor_Plan.pdf
 SUPERVISOR_REQUEST_TEMPLATE.md
 
-# Generated docs (regenerate with generate_doc.py)
+# Personal documentation (not part of thesis)
+PROJECT_DOCUMENTATION.md
+generate_doc.py
 Project_Documentation.docx
+Project_Documentation.pdf
 
 # Experiment data (can be large)
 data/experiments/

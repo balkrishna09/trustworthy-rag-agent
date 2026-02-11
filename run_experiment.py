@@ -9,6 +9,7 @@ Usage:
     python run_experiment.py --per-strategy # one experiment per poisoning strategy
     python run_experiment.py --fever        # also run on FEVER
     python run_experiment.py --ablation     # ablation study (vary alpha/beta/gamma)
+    python run_experiment.py --all          # run everything + generate charts
 """
 
 import sys
@@ -383,8 +384,19 @@ def main():
         ablation_samples = min(num_samples, 30)  # Keep ablation smaller
         run_ablation_study(pipeline_config, ablation_samples)
 
+    # --- Auto-generate charts ---
     print("\n" + "=" * 60)
-    print("ALL EXPERIMENTS COMPLETE!")
+    print("GENERATING THESIS CHARTS...")
+    print("=" * 60)
+    try:
+        from generate_charts import main as generate_charts_main
+        generate_charts_main()
+    except Exception as e:
+        print(f"  [WARNING] Chart generation failed: {e}")
+        print("  You can manually run: python generate_charts.py")
+
+    print("\n" + "=" * 60)
+    print("ALL EXPERIMENTS COMPLETE! Charts saved to figures/")
     print("=" * 60)
 
 
