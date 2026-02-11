@@ -6,6 +6,7 @@ Orchestrates document processing, embedding, and retrieval.
 from typing import List, Tuple, Optional, Dict, Any
 from pathlib import Path
 import yaml
+import numpy as np
 from loguru import logger
 
 from .document_processor import Document, TextChunker, DocumentLoader
@@ -174,10 +175,44 @@ class Retriever:
             ]
         }
     
+    def retrieve_with_embeddings(
+        self, query: str, k: Optional[int] = None
+    ) -> Tuple[List[Tuple['Document', float]], np.ndarray]:
+        """
+        Retrieve relevant documents and return their embeddings.
+
+        This method re-embeds the retrieved document texts so that the
+        evaluation agent can use them for semantic outlier detection.
+
+        Args:
+            query: Query string
+            k: Number of documents to retrieve (default: self.top_k)
+
+        Returns:
+            Tuple of (results, embeddings) where results is a list of
+            (Document, score) tuples and embeddings is a numpy array
+            of shape (num_docs, embedding_dim).
+        """
+        results = self.retrieve(query, k)
+
+        if not results:
+            return results, np.array([])
+
+        # Re-embed retrieved document texts
+        texts = [doc.content for doc, _ in results]
+        embeddings = self.embedder.embed_documents(texts)
+        doc_embeddings = np.array(embeddings)
+
+        logger.debug(
+            f"Retrieved {len(results)} documents with embeddings "
+            f"(shape: {doc_embeddings.shape})"
+        )
+        return results, doc_embeddings
+
     def save(self, path: Optional[str] = None):
         """
         Save the retriever's vector store to disk.
-        
+
         Args:
             path: Path to save to (default: self.index_path)
         """

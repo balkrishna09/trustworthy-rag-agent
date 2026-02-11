@@ -70,10 +70,10 @@ class SampleResult:
     query: str
     expected_answer: Optional[str]
     generated_answer: str
-    
+
     # Is this sample from a poisoned set?
     is_poisoned_set: bool
-    
+
     # Evaluation metrics
     trust_score: float
     trust_level: str
@@ -81,20 +81,23 @@ class SampleResult:
     factuality_score: float
     consistency_score: float
     poison_probability: float
-    
+
     # Detection correctness
     # True Positive: poisoned AND detected as untrustworthy
     # True Negative: clean AND detected as trustworthy
     # False Positive: clean BUT detected as untrustworthy
     # False Negative: poisoned BUT detected as trustworthy
     detection_correct: bool
-    
+
+    # Poisoning strategy (for per-strategy breakdown)
+    poison_strategy: str = "none"
+
     # Timing
     retrieval_time_ms: float = 0
     generation_time_ms: float = 0
     evaluation_time_ms: float = 0
     total_time_ms: float = 0
-    
+
     def to_dict(self) -> Dict:
         return {
             'sample_id': self.sample_id,
@@ -102,6 +105,7 @@ class SampleResult:
             'expected_answer': self.expected_answer,
             'generated_answer': self.generated_answer,
             'is_poisoned_set': self.is_poisoned_set,
+            'poison_strategy': self.poison_strategy,
             'trust_score': float(self.trust_score),
             'trust_level': self.trust_level,
             'is_trustworthy': bool(self.is_trustworthy),
@@ -109,6 +113,8 @@ class SampleResult:
             'consistency_score': float(self.consistency_score),
             'poison_probability': float(self.poison_probability),
             'detection_correct': bool(self.detection_correct),
+            'retrieval_time_ms': float(self.retrieval_time_ms),
+            'generation_time_ms': float(self.generation_time_ms),
             'evaluation_time_ms': float(self.evaluation_time_ms),
             'total_time_ms': float(self.total_time_ms)
         }
@@ -142,7 +148,19 @@ class ExperimentResult:
     # Timing
     total_time_seconds: float = 0.0
     avg_time_per_sample_ms: float = 0.0
-    
+    avg_evaluation_time_ms: float = 0.0  # Evaluation-only latency
+
+    # Per-strategy breakdown (RQ3)
+    per_strategy_metrics: Dict = field(default_factory=dict)
+
+    # Attack Success Rate (ASR) — fraction of poisoned samples that
+    # the LLM actually incorporated into its answer (regardless of
+    # whether the evaluation agent flagged them).
+    attack_success_rate: float = 0.0
+
+    # Baseline comparison (no evaluation agent)
+    baseline_accuracy: Optional[float] = None
+
     # Metadata
     timestamp: str = ""
     
@@ -201,8 +219,33 @@ class ExperimentResult:
         total_ms = sum(r.total_time_ms for r in self.sample_results)
         self.total_time_seconds = total_ms / 1000
         self.avg_time_per_sample_ms = total_ms / self.total_samples if self.total_samples > 0 else 0
-        
+
+        eval_times = [r.evaluation_time_ms for r in self.sample_results if r.evaluation_time_ms > 0]
+        self.avg_evaluation_time_ms = sum(eval_times) / len(eval_times) if eval_times else 0.0
+
+        # Per-strategy breakdown
+        self._calculate_per_strategy_metrics()
+
         self.timestamp = datetime.now().isoformat()
+
+    def _calculate_per_strategy_metrics(self):
+        """Calculate detection metrics broken down by poisoning strategy."""
+        strategy_buckets: Dict[str, list] = {}
+        for r in self.sample_results:
+            if r.is_poisoned_set and r.poison_strategy != "none":
+                strategy_buckets.setdefault(r.poison_strategy, []).append(r)
+
+        self.per_strategy_metrics = {}
+        for strategy, samples in strategy_buckets.items():
+            detected = sum(1 for s in samples if not s.is_trustworthy)
+            total = len(samples)
+            self.per_strategy_metrics[strategy] = {
+                'total': total,
+                'detected': detected,
+                'detection_rate': detected / total if total > 0 else 0.0,
+                'avg_trust_score': sum(s.trust_score for s in samples) / total if total > 0 else 0.0,
+                'avg_poison_probability': sum(s.poison_probability for s in samples) / total if total > 0 else 0.0,
+            }
     
     def to_dict(self) -> Dict:
         return {
@@ -221,7 +264,11 @@ class ExperimentResult:
                 'avg_trust_poisoned': self.avg_trust_poisoned,
                 'trust_score_separation': self.trust_score_separation,
                 'total_time_seconds': self.total_time_seconds,
-                'avg_time_per_sample_ms': self.avg_time_per_sample_ms
+                'avg_time_per_sample_ms': self.avg_time_per_sample_ms,
+                'avg_evaluation_time_ms': self.avg_evaluation_time_ms,
+                'attack_success_rate': self.attack_success_rate,
+                'baseline_accuracy': self.baseline_accuracy,
+                'per_strategy_metrics': self.per_strategy_metrics,
             },
             'timestamp': self.timestamp,
             'sample_results': [r.to_dict() for r in self.sample_results]
@@ -257,7 +304,22 @@ class ExperimentResult:
         print("\n--- Timing ---")
         print(f"Total Time: {self.total_time_seconds:.1f}s")
         print(f"Avg per Sample: {self.avg_time_per_sample_ms:.0f}ms")
-        
+        print(f"Avg Evaluation Latency: {self.avg_evaluation_time_ms:.0f}ms")
+
+        if self.per_strategy_metrics:
+            print("\n--- Per-Strategy Detection Rates ---")
+            for strategy, m in self.per_strategy_metrics.items():
+                print(
+                    f"  {strategy:20s}  detected {m['detected']}/{m['total']} "
+                    f"({m['detection_rate']:.0%})  avg_trust={m['avg_trust_score']:.3f}"
+                )
+
+        if self.baseline_accuracy is not None:
+            print(f"\n--- Baseline (No Evaluation Agent) ---")
+            print(f"Baseline Accuracy: {self.baseline_accuracy:.2%}")
+            improvement = self.accuracy - self.baseline_accuracy
+            print(f"Improvement:       {improvement:+.2%}")
+
         print("=" * 60)
 
 
@@ -379,6 +441,11 @@ class ExperimentRunner:
         # --- Part B: Evaluate with POISONED knowledge base ---
         print(f"\n[Part B] Evaluating {len(questions)} questions with POISONED documents...")
         
+        # Track which documents were actually poisoned (index → strategy)
+        # and which were left clean
+        poison_strategy_map: Dict[int, str] = {}
+        actually_poisoned_indices: set = set()
+
         if poisoned_knowledge_base is None:
             # Generate poisoned version
             generator = PoisonedDatasetGenerator()
@@ -388,7 +455,26 @@ class ExperimentRunner:
                 strategy=PoisonStrategy.MIXED
             )
             poisoned_knowledge_base = [s.poisoned_text for s in samples]
+            # Map question index → strategy name (only for actually poisoned docs)
+            for idx, s in enumerate(samples):
+                if s.is_poisoned:
+                    poison_strategy_map[idx] = s.strategy.value
+                    actually_poisoned_indices.add(idx)
             print(f"  Generated poisoned dataset: {stats}")
+            print(f"  Actually poisoned doc indices: {sorted(actually_poisoned_indices)}")
+        else:
+            # Pre-built poisoned KB — determine which docs were actually changed
+            # by comparing with the clean knowledge base
+            for idx in range(min(len(knowledge_base), len(poisoned_knowledge_base))):
+                if knowledge_base[idx] != poisoned_knowledge_base[idx]:
+                    actually_poisoned_indices.add(idx)
+                    poison_strategy_map[idx] = "unknown"
+            # If poison_labels are explicitly provided, use those instead
+            if poison_labels:
+                actually_poisoned_indices = {
+                    idx for idx, is_p in enumerate(poison_labels) if is_p
+                }
+            print(f"  Pre-built poisoned KB: {len(actually_poisoned_indices)} docs modified")
         
         pipeline_poisoned = RAGPipeline(
             config=self.pipeline_config,
@@ -399,27 +485,43 @@ class ExperimentRunner:
         offset = len(questions)
         for i, question in enumerate(questions):
             expected = expected_answers[i] if expected_answers else None
-            
-            print(f"  [{i+1}/{len(questions)}] {question[:50]}...")
-            
+
+            # Determine if THIS specific question's corresponding document
+            # was actually poisoned. Only mark as poisoned if the relevant
+            # doc was modified — otherwise it's effectively a clean sample.
+            is_actually_poisoned = i in actually_poisoned_indices
+            strategy = poison_strategy_map.get(i, "none")
+
+            status = "POISONED" if is_actually_poisoned else "clean"
+            print(f"  [{i+1}/{len(questions)}] [{status}] {question[:50]}...")
+
             start = time.time()
             try:
                 result = pipeline_poisoned.query_with_evaluation(question)
                 elapsed = (time.time() - start) * 1000
-                
+
+                # Detection correctness:
+                # If actually poisoned: correct when flagged as untrustworthy
+                # If clean (in poisoned KB): correct when flagged as trustworthy
+                if is_actually_poisoned:
+                    detection_correct = not (result.is_trustworthy or False)
+                else:
+                    detection_correct = result.is_trustworthy or False
+
                 sample_results.append(SampleResult(
                     sample_id=offset + i,
                     query=question,
                     expected_answer=expected,
                     generated_answer=result.response,
-                    is_poisoned_set=True,
+                    is_poisoned_set=is_actually_poisoned,
                     trust_score=result.trust_score or 0,
                     trust_level=result.trust_level.value if result.trust_level else "unknown",
                     is_trustworthy=result.is_trustworthy or False,
                     factuality_score=result.evaluation.trust_index.components.factuality_score if result.evaluation else 0,
                     consistency_score=result.evaluation.trust_index.components.consistency_score if result.evaluation else 0,
                     poison_probability=result.evaluation.trust_index.components.poison_score if result.evaluation else 0,
-                    detection_correct=not (result.is_trustworthy or False),  # Poisoned should NOT be trusted
+                    detection_correct=detection_correct,
+                    poison_strategy=strategy,
                     evaluation_time_ms=result.evaluation.evaluation_time_ms if result.evaluation else 0,
                     total_time_ms=elapsed
                 ))
@@ -431,14 +533,15 @@ class ExperimentRunner:
                     query=question,
                     expected_answer=expected,
                     generated_answer=f"ERROR: {str(e)}",
-                    is_poisoned_set=True,
+                    is_poisoned_set=is_actually_poisoned,
                     trust_score=0,
                     trust_level="error",
                     is_trustworthy=False,
                     factuality_score=0,
                     consistency_score=0,
                     poison_probability=0,
-                    detection_correct=True,  # Error means not trusted = correct for poisoned
+                    detection_correct=is_actually_poisoned,  # Error=untrusted=correct for poisoned
+                    poison_strategy=strategy,
                     total_time_ms=elapsed
                 ))
         
@@ -456,6 +559,49 @@ class ExperimentRunner:
         
         return experiment_result
     
+    def run_baseline(
+        self,
+        knowledge_base: List[str],
+        poisoned_knowledge_base: List[str],
+        questions: List[str],
+    ) -> float:
+        """
+        Run a baseline experiment WITHOUT the evaluation agent.
+
+        The baseline simply accepts all responses as trustworthy.
+        Returns the accuracy that a naive system would achieve.
+
+        With the corrected labeling: Part A samples are all clean (TN),
+        Part B samples are a mix: clean docs in poisoned KB are TN,
+        actually poisoned docs are FN.
+
+        Args:
+            knowledge_base: Clean documents
+            poisoned_knowledge_base: Poisoned documents
+            questions: Questions to test
+
+        Returns:
+            Baseline accuracy (float)
+        """
+        # Count actually poisoned docs
+        num_actually_poisoned = sum(
+            1 for a, b in zip(knowledge_base, poisoned_knowledge_base)
+            if a != b
+        )
+        num_questions = len(questions)
+
+        # Part A: all clean → all TN
+        # Part B: clean docs in poisoned KB → TN, actually poisoned → FN
+        total = num_questions * 2
+        true_negatives = num_questions + (num_questions - num_actually_poisoned)
+        false_negatives = num_actually_poisoned
+        accuracy = true_negatives / total if total > 0 else 0.0
+        logger.info(
+            f"Baseline accuracy (always trust): {accuracy:.2%} "
+            f"({num_actually_poisoned} actually poisoned out of {num_questions} docs)"
+        )
+        return accuracy
+
     def save_results(self, result: ExperimentResult, filename: Optional[str] = None):
         """Save experiment results to disk."""
         import numpy as np

@@ -6,6 +6,7 @@ This is critical for evaluating how well the Evaluation Agent
 detects knowledge poisoning attacks.
 """
 
+import re
 import random
 import json
 import logging
@@ -106,14 +107,54 @@ class PoisonedDatasetGenerator:
         return poisoned
     
     def poison_text_entity_swap(self, text: str) -> str:
-        """Apply entity swap poisoning."""
-        poisoned = text
+        """Apply entity swap poisoning.
+
+        Tries predefined entity swaps first. If none match, falls back
+        to swapping numbers found in the text or inserting a plausible
+        but incorrect factual modifier.
+        """
+        # Try predefined entity swaps first
         for original, replacements in self.ENTITY_SWAPS.items():
             if original in text:
                 replacement = self.rng.choice(replacements)
-                poisoned = poisoned.replace(original, replacement)
-                break
-        return poisoned
+                return text.replace(original, replacement)
+
+        # Fallback 1: swap numbers (e.g. years, counts, percentages)
+        numbers = re.findall(r'\b(\d+)\b', text)
+        if numbers:
+            target = self.rng.choice(numbers)
+            original_num = int(target)
+            # Shift the number by a believable offset
+            offset = self.rng.choice([-3, -2, -1, 1, 2, 3, 5, 10])
+            new_num = max(0, original_num + offset)
+            return text.replace(target, str(new_num), 1)
+
+        # Fallback 2: swap an adjective/qualifier to alter meaning
+        # Prefer modifying the answer part (after '?') when possible
+        swaps = [
+            ("not ", ""), ("no ", "some "), ("never ", "often "),
+            ("always ", "rarely "), ("true", "false"),
+            ("can ", "cannot "), ("is ", "is not "),
+            ("does ", "does not "), ("do ", "do not "),
+        ]
+        # Determine the answer portion (after first '?')
+        q_end = text.find("?")
+        answer_start = q_end + 1 if q_end != -1 else 0
+        answer_part = text[answer_start:].lower()
+
+        for old, new in swaps:
+            pos_in_answer = answer_part.find(old)
+            if pos_in_answer != -1:
+                abs_pos = answer_start + pos_in_answer
+                return text[:abs_pos] + new + text[abs_pos + len(old):]
+        # If nothing matched in answer, try the whole text
+        for old, new in swaps:
+            if old in text.lower():
+                idx = text.lower().find(old)
+                return text[:idx] + new + text[idx + len(old):]
+
+        # Last resort: append a subtle false addition
+        return text + " However, this is disputed by recent findings."
     
     def poison_text_subtle(self, text: str) -> str:
         """Apply subtle manipulation (harder to detect)."""
@@ -178,11 +219,12 @@ class PoisonedDatasetGenerator:
         else:
             poisoned_text = text  # No poisoning
         
+        actually_changed = poisoned_text != text
         return PoisonedSample(
             original_text=text,
             poisoned_text=poisoned_text,
             strategy=strategy,
-            is_poisoned=True,
+            is_poisoned=actually_changed,
             metadata={'strategy': strategy.value}
         )
     

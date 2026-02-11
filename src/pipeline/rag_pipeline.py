@@ -3,11 +3,21 @@ RAG Pipeline for Trustworthy RAG
 Connects retriever, evaluation agent, and generator into a complete system.
 """
 
+import os
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
 import yaml
 from loguru import logger
+
+# Load .env if available (makes FARMI_API_KEY etc. accessible via os.environ)
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 from src.retriever import Retriever, Document
 from src.generator import Generator
@@ -235,10 +245,11 @@ class RAGPipeline:
         k = k or self.top_k
         
         logger.info(f"Processing query with evaluation: {question[:50]}...")
-        
-        # Step 1: Retrieve relevant documents
-        retrieved = self.retriever.retrieve(question, k=k)
-        
+
+        # Step 1: Retrieve relevant documents WITH embeddings
+        # Embeddings are used by the poison detector for semantic outlier analysis
+        retrieved, doc_embeddings = self.retriever.retrieve_with_embeddings(question, k=k)
+
         if not retrieved:
             logger.warning("No documents retrieved")
             return RAGResponse(
@@ -249,29 +260,30 @@ class RAGPipeline:
                 metadata={'error': 'no_documents_retrieved'},
                 evaluation=None
             )
-        
+
         # Extract documents and scores
         docs = [doc.content for doc, _ in retrieved]
         scores = [score for _, score in retrieved]
-        
+
         logger.debug(f"Retrieved {len(docs)} documents")
-        
+
         # Step 2: Generate response
         response = self.generator.generate(
             question=question,
             context_docs=docs,
             **kwargs
         )
-        
+
         logger.debug(f"Generated response: {response[:100]}...")
-        
-        # Step 3: Evaluate the response
+
+        # Step 3: Evaluate the response (with embeddings for semantic analysis)
         logger.info("Running evaluation...")
         evaluation_result = self.evaluation_agent.evaluate(
             query=question,
             response=response,
             retrieved_documents=docs,
-            retrieval_scores=scores
+            retrieval_scores=scores,
+            document_embeddings=doc_embeddings if len(doc_embeddings) > 0 else None
         )
         
         logger.info(

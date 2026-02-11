@@ -3,9 +3,20 @@ Generator Module for Trustworthy RAG
 Handles response generation using LLM with retrieved context.
 """
 
+import os
 from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
 import yaml
 from loguru import logger
+
+# Load .env if available
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 from .llm_client import BaseLLMClient, FARMIClient, create_llm_client
 from .prompts import (
@@ -51,14 +62,14 @@ class Generator:
             with open(config_path, 'r') as f:
                 self.config = yaml.safe_load(f)
         else:
-            # Default configuration
+            # Default configuration (reads from .env via os.environ)
             self.config = {
-                'LLM_PROVIDER': 'openai_compatible',
-                'FARMI_API_URL': 'https://gptlab.rd.tuni.fi/students/ollama/v1',
-                'FARMI_API_KEY': '',
-                'LLM_MODEL': 'llama3.3:70b',
-                'MAX_NEW_TOKENS': 512,
-                'TEMPERATURE': 0.7
+                'LLM_PROVIDER': os.environ.get('LLM_PROVIDER', 'openai_compatible'),
+                'FARMI_API_URL': os.environ.get('FARMI_API_URL', 'https://gptlab.rd.tuni.fi/students/ollama/v1'),
+                'FARMI_API_KEY': os.environ.get('FARMI_API_KEY', ''),
+                'LLM_MODEL': os.environ.get('LLM_MODEL', 'llama3.3:70b'),
+                'MAX_NEW_TOKENS': int(os.environ.get('MAX_NEW_TOKENS', '512')),
+                'TEMPERATURE': float(os.environ.get('TEMPERATURE', '0.7'))
             }
         
         # Initialize LLM client

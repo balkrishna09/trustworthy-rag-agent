@@ -142,3 +142,18 @@ data/experiments/
 # Claude AI
 .claude/
 CLAUDE.md
+
+# Empty placeholder directories
+experiments/baselines/
+experiments/evaluation/
+experiments/results/
+notebooks/
+
+# Windows artifacts
+nul
+
+# Thesis files (local only)
+Master_Thesis/
+Master_Thesis.zip
+GITHUB_SETUP.md
+HOW_IT_WORKS.md

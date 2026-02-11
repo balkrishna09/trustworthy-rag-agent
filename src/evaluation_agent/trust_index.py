@@ -178,20 +178,41 @@ class TrustIndexCalculator:
         factuality_contribution = self.alpha * factuality_score
         consistency_contribution = self.beta * consistency_score
         poison_contribution = self.gamma * (1.0 - poison_score)  # Invert poison score
-        
-        # Calculate base trust score
+
+        # Calculate base trust score (linear combination)
         trust_score = (
             factuality_contribution +
             consistency_contribution +
             poison_contribution
         )
-        
+
+        # Non-linear poison dampening: when the poison detector reports
+        # a probability above the contamination threshold (0.7), the
+        # knowledge base is likely compromised. In this regime, a purely
+        # linear formula cannot push trust below the threshold because
+        # γ (poison weight) is only 0.25 — factuality and consistency
+        # dominate.
+        #
+        # We apply a multiplicative dampener that smoothly transitions
+        # from 1.0 at poison=0.7 to 0.6 at poison=1.0. This keeps the
+        # formula well-behaved: low poison → no change, high poison →
+        # trust is scaled down, making it possible for the system to
+        # flag even well-supported answers from a contaminated KB.
+        #
+        # Formula: trust *= 1 - 0.4 * ((poison - 0.7) / 0.3)
+        #   At poison=0.7: multiplier = 1.0  (no change)
+        #   At poison=0.85: multiplier = 0.8
+        #   At poison=1.0: multiplier = 0.6
+        if poison_score > 0.7:
+            dampener = 1.0 - 0.4 * ((poison_score - 0.7) / 0.3)
+            trust_score *= dampener
+
         # Apply optional modifiers
         if retrieval_confidence < 1.0:
             trust_score *= (0.5 + 0.5 * retrieval_confidence)
         if source_credibility < 1.0:
             trust_score *= (0.5 + 0.5 * source_credibility)
-        
+
         # Ensure final score is in range
         trust_score = max(0.0, min(1.0, trust_score))
         

@@ -136,7 +136,9 @@ class EvaluationAgent:
         )
         
         self.poison_detector = PoisonDetector(
-            poison_threshold=poison_threshold
+            poison_threshold=poison_threshold,
+            use_semantic_analysis=True,
+            nli_verifier=self.nli_verifier
         )
         
         self.trust_calculator = TrustIndexCalculator(
@@ -185,7 +187,8 @@ class EvaluationAgent:
         logger.debug("Running poison detection...")
         poison_result = self.poison_detector.detect_batch(
             documents=retrieved_documents,
-            embeddings=document_embeddings
+            embeddings=document_embeddings,
+            retrieval_scores=retrieval_scores
         )
         
         # Step 3: Calculate document consistency
@@ -239,34 +242,85 @@ class EvaluationAgent:
     ) -> float:
         """
         Calculate document consistency score.
-        
-        Uses the NLI support ratio and checks for contradictions
-        between documents.
+
+        Key insight: In a typical RAG retrieval with diverse knowledge bases
+        (like TruthfulQA), the top-K retrieved documents may come from very
+        different topics. Two documents about different topics are NOT
+        inconsistent — they're just unrelated. Only actual contradictions
+        (high contradiction score) should lower consistency.
+
+        Blends two signals:
+        1. Answer-document agreement (focused on relevant docs only)
+        2. Pairwise document contradiction detection (only penalizes real contradictions)
+
+        Falls back to support-ratio-only when pairwise NLI is unavailable.
         """
         if not documents:
             return 0.0
-        
-        # Start with support ratio
+
+        # --- Component 1: Answer-document consistency ---
+        # Use support_ratio from NLI result (already fixed to focus on relevant docs)
         base_consistency = nli_result.support_ratio
-        
-        # Penalize for high contradiction
-        contradiction_penalty = nli_result.max_contradiction * 0.3
-        
-        # Check variance in entailment scores
-        if nli_result.individual_results:
-            entailment_scores = [
-                r.entailment_score for r in nli_result.individual_results
-            ]
-            if len(entailment_scores) > 1:
-                variance = self._calculate_variance(entailment_scores)
-                # High variance = low consistency
-                variance_penalty = variance * 0.2
-            else:
-                variance_penalty = 0.0
+
+        # Only penalize for STRONG contradiction (>0.5), not mild scores
+        contradiction_penalty = 0.0
+        if nli_result.max_contradiction > 0.5:
+            contradiction_penalty = (nli_result.max_contradiction - 0.5) * 0.6
+
+        answer_consistency = max(0.0, min(1.0,
+            base_consistency - contradiction_penalty
+        ))
+
+        # --- Component 2: Pairwise document contradiction detection ---
+        # ONLY check for actual contradictions between docs.
+        # Two docs about different topics (neutral NLI) are fine — they just
+        # cover different subjects. Only flag when docs actively contradict.
+        doc_consistency = None
+        if len(documents) >= 2:
+            try:
+                contradiction_count = 0
+                total_pairs = 0
+                max_pairs = 10
+                pair_count = 0
+                for i in range(len(documents)):
+                    for j in range(i + 1, len(documents)):
+                        if pair_count >= max_pairs:
+                            break
+                        # Skip very short document pairs — BART-MNLI gives
+                        # contradiction ~0.99 for unrelated short texts (< 20
+                        # words each), which are not real contradictions.
+                        if (len(documents[i].split()) < 20
+                                and len(documents[j].split()) < 20):
+                            continue
+                        result = self.nli_verifier.verify_document_pair(
+                            documents[i], documents[j]
+                        )
+                        total_pairs += 1
+                        pair_count += 1
+                        # Only count actual contradictions (score > 0.5)
+                        if result.contradiction_score > 0.5:
+                            contradiction_count += 1
+                    if pair_count >= max_pairs:
+                        break
+
+                if total_pairs > 0:
+                    # Consistency = 1.0 when no contradictions, drops as contradictions appear
+                    contradiction_ratio = contradiction_count / total_pairs
+                    doc_consistency = 1.0 - contradiction_ratio
+            except Exception as e:
+                logger.warning(f"Pairwise document NLI failed: {e}")
+
+        # --- Blend components ---
+        if doc_consistency is not None:
+            # Weight pairwise consistency based on average document length.
+            # Short docs (< 30 words avg) are unreliable for pairwise NLI,
+            # so we reduce their weight.
+            avg_doc_len = sum(len(d.split()) for d in documents) / len(documents)
+            pairwise_weight = min(0.5, avg_doc_len / 60.0)
+            consistency = (1.0 - pairwise_weight) * answer_consistency + pairwise_weight * doc_consistency
         else:
-            variance_penalty = 0.0
-        
-        consistency = base_consistency - contradiction_penalty - variance_penalty
+            consistency = answer_consistency
+
         return max(0.0, min(1.0, consistency))
     
     def _calculate_variance(self, scores: List[float]) -> float:
@@ -281,13 +335,26 @@ class EvaluationAgent:
         self,
         retrieval_scores: Optional[List[float]]
     ) -> float:
-        """Convert retrieval scores to confidence value."""
+        """Convert retrieval scores to confidence value.
+
+        FAISS L2-to-similarity conversion ``1/(1+dist)`` naturally caps
+        around 0.4-0.7 even for very good matches. Using these raw
+        scores as a multiplicative penalty uniformly dampens trust by
+        ~25%, compressing the score range and hurting discrimination.
+
+        We therefore only penalize when the *best* retrieval score is
+        below 0.3, which indicates the retriever truly failed to find
+        relevant documents.  Above that threshold we return 1.0 (no
+        penalty).
+        """
         if not retrieval_scores:
             return 1.0
-        
-        # Average score, clamped to [0, 1]
-        avg = sum(retrieval_scores) / len(retrieval_scores)
-        return max(0.0, min(1.0, avg))
+
+        best_score = max(retrieval_scores)
+        if best_score < 0.3:
+            # Very poor retrieval — linearly scale confidence 0→1
+            return best_score / 0.3
+        return 1.0
     
     def _generate_summary(
         self,

@@ -3,10 +3,21 @@ LLM Client for Trustworthy RAG
 Handles communication with FARMI/Ollama/OpenAI APIs.
 """
 
+import os
 import requests
 from typing import Optional, Dict, Any, List
 from abc import ABC, abstractmethod
+from pathlib import Path
 from loguru import logger
+
+# Load .env if available
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 
 class BaseLLMClient(ABC):
@@ -211,9 +222,9 @@ def create_llm_client(config: Dict[str, Any]) -> BaseLLMClient:
     
     if provider == "openai_compatible" or provider == "farmi":
         return FARMIClient(
-            api_url=config.get("FARMI_API_URL", "https://gptlab.rd.tuni.fi/students/ollama/v1"),
-            api_key=config.get("FARMI_API_KEY", ""),
-            model=config.get("LLM_MODEL", "llama3.3:70b"),
+            api_url=config.get("FARMI_API_URL", os.environ.get("FARMI_API_URL", "https://gptlab.rd.tuni.fi/students/ollama/v1")),
+            api_key=config.get("FARMI_API_KEY", "") or os.environ.get("FARMI_API_KEY", ""),
+            model=config.get("LLM_MODEL", os.environ.get("LLM_MODEL", "llama3.3:70b")),
             max_tokens=config.get("MAX_NEW_TOKENS", 512),
             temperature=config.get("TEMPERATURE", 0.7)
         )
