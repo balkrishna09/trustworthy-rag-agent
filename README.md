@@ -16,7 +16,7 @@ The system produces a **Trust Score** (0-1) for every RAG response, enabling aut
 
 - **RQ1**: What computational strategies are effective for detecting misinformation and poisoning in retrieved contexts?
 - **RQ2**: How can a composite "Trust Index" be formulated to quantify RAG response reliability?
-- **RQ3**: How does the Evaluation Agent enhance security performance vs. baseline systems?
+- **RQ3**: How does the Evaluation Agent enhance security performance vs. baseline systems, and how does LLM/embedding choice affect Trust Index discriminative performance?
 
 ## Architecture
 
@@ -25,12 +25,12 @@ User Query
     |
     v
 +-------------------+
-|     RETRIEVER     |   Embedding (MiniLM-L6-v2) + FAISS vector search
+|     RETRIEVER     |   Embedding (MiniLM-L6-v2 or Snowflake Arctic Embed2) + FAISS
 +--------+----------+
          |
          v
 +-------------------+
-|     GENERATOR     |   Llama 3.3 70B via FARMI (OpenAI-compatible API)
+|     GENERATOR     |   Llama 3.3 70B or Qwen 3.5 35B via FARMI API
 +--------+----------+
          |
          v
@@ -106,7 +106,14 @@ python run_experiment.py --samples 30     # Custom sample count
 python run_experiment.py --per-strategy   # Per-strategy breakdown only
 python run_experiment.py --fever          # Include FEVER dataset
 python run_experiment.py --ablation       # Ablation study only
+python run_experiment.py --grid           # 2x2 factorial grid (all LLM x embedding combos)
+python run_experiment.py --grid --samples 50  # Full grid run (100 samples per config)
 ```
+
+The interactive prompt lets you select:
+- **LLM**: Llama 3.3 70B (primary) or Qwen 3.5 35B (comparison)
+- **Embedding**: all-MiniLM-L6-v2 (local) or snowflake-arctic-embed2 (API)
+- **K**: Retrieval depth — K=3 (faster) or K=5 (standard, default)
 
 ### Regenerate Charts Only
 
@@ -124,25 +131,43 @@ pytest --cov=src          # With coverage report
 
 ## Key Results
 
-| Dataset | Accuracy | Precision | Recall | F1 Score |
-|---------|----------|-----------|--------|----------|
-| TruthfulQA (mixed) | 91% | 100% | 40% | 57.1% |
-| FEVER | 78% | 33.3% | 46.7% | 38.9% |
+### Primary Results (Llama 3.3 70B + all-MiniLM-L6-v2, TruthfulQA, K=5)
 
-### Per-Strategy Detection (TruthfulQA)
+| Dataset | Accuracy | Precision | Recall | F1 Score | vs. Baseline |
+|---------|----------|-----------|--------|----------|--------------|
+| TruthfulQA (mixed) | 91% | 100% | 40% | 57.1% | +7% |
+| FEVER | 90% | — | 66.7% | — | +5% |
 
-| Strategy | Accuracy | F1 | Detection Rate |
-|----------|----------|----|----------------|
-| Injection | 99% | 96.8% | 100% |
-| Contradiction | 94% | 75% | 60% |
-| Subtle | 89% | 42.1% | 26.7% |
-| Entity Swap | 86% | 12.5% | 6.7% |
+Naive always-trust baseline: **85%** (TruthfulQA), **85%** (FEVER)
+
+### Per-Strategy Detection (TruthfulQA, 20 samples each)
+
+| Strategy | Accuracy | F1 | Recall | Separation |
+|----------|----------|----|--------|------------|
+| Contradiction | 89% | 61.1% | 60% | 0.245 |
+| Injection | 75% | 54.5% | 100% | 0.407 |
+| Entity Swap | 84% | 28.6% | 16.7% | 0.071 |
+| Subtle | 86% | 25.0% | 16.7% | 0.127 |
+
+### 2×2 Factorial Grid (K=3, TruthfulQA, 100 samples)
+
+| LLM | Embedding | Accuracy | Precision | Recall | F1 | Clean Trust | Separation |
+|-----|-----------|----------|-----------|--------|----|-------------|------------|
+| Llama 3.3 70B | all-MiniLM-L6-v2 | 91% | 100% | 40% | 57.1% | 0.830 | 0.240 |
+| Llama 3.3 70B | snowflake-arctic-embed2 | 91% | 100% | 40% | 57.1% | 0.799 | 0.188 |
+| Qwen 3.5 35B | all-MiniLM-L6-v2 | 71% | 25.0% | 46.7% | 32.6% | 0.633 | 0.161 |
+| Qwen 3.5 35B | snowflake-arctic-embed2 | 71% | 28.1% | 60.0% | 38.3% | 0.653 | 0.199 |
+
+**Key findings:**
+- **Embedding invariance for Llama**: both embedding models yield identical detection results — Trust Index is LLM-driven, not retrieval-driven
+- **Qwen generation-style problem**: verbose/hedged outputs reduce NLI entailment for clean samples → 71% accuracy, below the 85% naive baseline
+- **K sensitivity null result**: K=5 produces identical detection performance to K=3 for Llama 3.3 70B — detection is bottlenecked by attack strategy difficulty, not retrieval depth
 
 ## Tech Stack
 
-- **LLM**: Llama 3.3 70B (FARMI cluster, Tampere University)
+- **LLMs**: Llama 3.3 70B (primary), Qwen 3.5 35B (comparison) — FARMI cluster, Tampere University
 - **NLI Model**: facebook/bart-large-mnli
-- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2
+- **Embeddings**: all-MiniLM-L6-v2 (384-dim), snowflake-arctic-embed2 (1024-dim)
 - **Vector Store**: FAISS (CPU)
 - **Datasets**: TruthfulQA, FEVER (HuggingFace)
 - **Framework**: Python 3.10+, PyTorch, Transformers, LangChain
@@ -155,7 +180,8 @@ Trust = alpha * Factuality + beta * Consistency + gamma * (1 - PoisonProbability
 Default weights: alpha=0.4, beta=0.35, gamma=0.25
 ```
 
-A non-linear dampener applies when poison probability exceeds 0.7, ensuring highly poisoned content receives significantly lower trust scores regardless of other components.
+A non-linear dampener applies when poison probability exceeds 0.7:
+`delta = 1 - 0.4 * (P - 0.70) / 0.30` — at P=1.0, trust is reduced by 40%.
 
 | Trust Level | Score Range | Meaning |
 |-------------|-------------|---------|
