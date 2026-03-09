@@ -1,7 +1,17 @@
 """
 Generate Word Document from Project Documentation
 Converts PROJECT_DOCUMENTATION.md to a properly formatted Word document.
+Embeds figures from the figures/ folder into the document.
 """
+
+import sys
+import os
+
+# Fix Windows encoding
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
@@ -19,7 +29,7 @@ def parse_markdown(md_content):
     current_content = []
     in_code_block = False
     code_block_content = []
-    
+
     for line in lines:
         # Handle code blocks
         if line.strip().startswith('```'):
@@ -33,11 +43,18 @@ def parse_markdown(md_content):
                 # Start of code block
                 in_code_block = True
             continue
-        
+
         if in_code_block:
             code_block_content.append(line)
             continue
-        
+
+        # Handle image references: ![alt](path)
+        img_match = re.match(r'!\[.*?\]\((.*?)\)', line.strip())
+        if img_match:
+            img_path = img_match.group(1)
+            current_content.append(('image', img_path))
+            continue
+
         # Handle headers
         if line.startswith('# '):
             if current_section:
@@ -59,50 +76,73 @@ def parse_markdown(md_content):
             current_content.append(('table_row', line))
         elif line.strip():
             current_content.append(('para', line.strip()))
-    
+
     if current_section:
         sections.append((current_section, current_content))
-    
+
     return sections
 
 
-def create_word_document(md_path, output_path):
-    """Create Word document from markdown file."""
+def add_formatted_paragraph(doc, text, bold=False, italic=False, size=None):
+    """Add a paragraph with basic markdown formatting (bold, code, links)."""
+    p = doc.add_paragraph()
+
+    # Split text by bold markers (**...**) and code markers (`...`)
+    # Simple approach: remove markdown formatting and add as plain text
+    clean_text = text
+    clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)  # Bold
+    clean_text = re.sub(r'`(.*?)`', r'\1', clean_text)  # Code
+    clean_text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', clean_text)  # Links
+
+    if clean_text.strip() and clean_text.strip() != '---':
+        run = p.add_run(clean_text)
+        if bold:
+            run.bold = True
+        if italic:
+            run.italic = True
+        if size:
+            run.font.size = size
+        return p
+    return None
+
+
+def create_word_document(md_path, output_path, project_dir):
+    """Create Word document from markdown file with embedded images."""
     # Read markdown
     with open(md_path, 'r', encoding='utf-8') as f:
         md_content = f.read()
-    
+
     # Create document
     doc = Document()
-    
+
     # Set up styles
     styles = doc.styles
-    
+
     # Title style
     title_style = styles['Title']
     title_style.font.size = Pt(28)
     title_style.font.bold = True
     title_style.font.color.rgb = RGBColor(0, 51, 102)
-    
+
     # Heading 1 style
     h1_style = styles['Heading 1']
     h1_style.font.size = Pt(18)
     h1_style.font.bold = True
     h1_style.font.color.rgb = RGBColor(0, 51, 102)
-    
+
     # Heading 2 style
     h2_style = styles['Heading 2']
     h2_style.font.size = Pt(14)
     h2_style.font.bold = True
     h2_style.font.color.rgb = RGBColor(0, 76, 153)
-    
+
     # Parse markdown
     sections = parse_markdown(md_content)
-    
+
     # Add content
     for section_header, content in sections:
         header_type, header_text = section_header
-        
+
         # Add section header
         if header_type == 'h1':
             # Check if it's the main title
@@ -112,7 +152,7 @@ def create_word_document(md_path, output_path):
                 doc.add_heading(header_text, level=1)
         elif header_type == 'h2':
             doc.add_heading(header_text, level=2)
-        
+
         # Add section content
         for item_type, item_content in content:
             if item_type == 'h3':
@@ -133,8 +173,30 @@ def create_word_document(md_path, output_path):
                 run = p.add_run(item_content)
                 run.font.name = 'Consolas'
                 run.font.size = Pt(9)
+            elif item_type == 'image':
+                # Embed image into the document
+                img_path = project_dir / item_content
+                if img_path.exists():
+                    p = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run()
+                    run.add_picture(str(img_path), width=Inches(6.0))
+
+                    # Add caption below the image
+                    caption_text = Path(item_content).stem.replace('_', ' ').title()
+                    cap = doc.add_paragraph()
+                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    cap_run = cap.add_run(caption_text)
+                    cap_run.italic = True
+                    cap_run.font.size = Pt(9)
+                    cap_run.font.color.rgb = RGBColor(100, 100, 100)
+                else:
+                    p = doc.add_paragraph()
+                    run = p.add_run(f"[Image not found: {item_content}]")
+                    run.italic = True
+                    run.font.color.rgb = RGBColor(200, 0, 0)
             elif item_type == 'table_row':
-                # Skip table formatting for now (complex)
+                # Skip table formatting rows (separator rows like |---|---|)
                 pass
             elif item_type == 'para':
                 # Clean markdown formatting
@@ -142,10 +204,10 @@ def create_word_document(md_path, output_path):
                 clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)  # Bold
                 clean_text = re.sub(r'`(.*?)`', r'\1', clean_text)  # Code
                 clean_text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', clean_text)  # Links
-                
+
                 if clean_text.strip() and clean_text.strip() != '---':
                     p = doc.add_paragraph(clean_text)
-    
+
     # Save document
     doc.save(output_path)
     print(f"Document saved to: {output_path}")
@@ -155,5 +217,5 @@ if __name__ == "__main__":
     project_dir = Path(__file__).parent
     md_path = project_dir / "PROJECT_DOCUMENTATION.md"
     output_path = project_dir / "Project_Documentation.docx"
-    
-    create_word_document(md_path, output_path)
+
+    create_word_document(md_path, output_path, project_dir)

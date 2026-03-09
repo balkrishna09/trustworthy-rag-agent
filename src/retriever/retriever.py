@@ -10,7 +10,7 @@ import numpy as np
 from loguru import logger
 
 from .document_processor import Document, TextChunker, DocumentLoader
-from .embeddings import EmbeddingGenerator
+from .embeddings import EmbeddingGenerator, create_embedding_generator
 from .vector_store import FAISSVectorStore
 
 
@@ -55,10 +55,8 @@ class Retriever:
                 'FAISS_INDEX_PATH': 'data/processed/faiss_index'
             }
         
-        # Initialize components
-        self.embedder = EmbeddingGenerator(
-            model_name=self.config.get('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')
-        )
+        # Initialize components — factory picks local or API backend automatically
+        self.embedder = create_embedding_generator(self.config)
         
         self.chunker = TextChunker(
             chunk_size=self.config.get('CHUNK_SIZE', 512),
