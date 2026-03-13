@@ -155,7 +155,10 @@ def create_directories():
     return all_created
 
 def create_env_file():
-    """Create .env file from config.yaml if it doesn't exist"""
+    """Create .env file from config.yaml if it doesn't exist.
+
+    Converts YAML key-value pairs to dotenv format (KEY=value).
+    """
     print("\n" + "="*60)
     print("Setting up Configuration")
     print("="*60)
@@ -172,10 +175,18 @@ def create_env_file():
         return True
     
     try:
-        # Copy config.yaml to .env
-        import shutil
-        shutil.copy(config_path, env_path)
-        print("✓ Created .env file from configs/config.yaml")
+        import yaml
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.write("# Trustworthy RAG Configuration\n")
+            f.write("# This file is loaded automatically by python-dotenv\n\n")
+            for key, value in config.items():
+                # Write each key-value pair in dotenv format (KEY=value)
+                f.write(f"{key}={value}\n")
+
+        print("✓ Created .env file from configs/config.yaml (dotenv format)")
         print("  Please edit .env with your specific settings")
         return True
     except Exception as e:

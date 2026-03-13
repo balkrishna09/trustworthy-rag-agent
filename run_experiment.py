@@ -425,10 +425,9 @@ def run_grid_experiments(pipeline_config: dict, num_samples: int = 50, dataset: 
         if result is None:
             continue
         emb_label = emb.split("/")[-1][:35]
-        m = result.metrics
         print(
             f"  {llm:<18}  {emb_label:<35}  "
-            f"{m.accuracy*100:>4.0f}%  {m.f1_score*100:>4.0f}%  {m.trust_score_separation:>5.3f}"
+            f"{result.accuracy*100:>4.0f}%  {result.f1_score*100:>4.0f}%  {result.trust_score_separation:>5.3f}"
         )
     print("=" * 60)
     return results

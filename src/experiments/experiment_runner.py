@@ -153,10 +153,7 @@ class ExperimentResult:
     # Per-strategy breakdown (RQ3)
     per_strategy_metrics: Dict = field(default_factory=dict)
 
-    # Attack Success Rate (ASR) — fraction of poisoned samples that
-    # the LLM actually incorporated into its answer (regardless of
-    # whether the evaluation agent flagged them).
-    attack_success_rate: float = 0.0
+
 
     # Baseline comparison (no evaluation agent)
     baseline_accuracy: Optional[float] = None
@@ -266,7 +263,7 @@ class ExperimentResult:
                 'total_time_seconds': self.total_time_seconds,
                 'avg_time_per_sample_ms': self.avg_time_per_sample_ms,
                 'avg_evaluation_time_ms': self.avg_evaluation_time_ms,
-                'attack_success_rate': self.attack_success_rate,
+
                 'baseline_accuracy': self.baseline_accuracy,
                 'per_strategy_metrics': self.per_strategy_metrics,
             },
