@@ -1,0 +1,101 @@
+\chapter{Theoretical and Conceptual Background}
+\label{ch2_theory_background}
+
+This chapter establishes the theoretical foundations required to understand the security and reliability challenges in Retrieval-Augmented Generation (RAG) systems. It provides an overview of Large Language Models (LLMs), mathematically defines the RAG architecture, and taxonomizes the threat landscape, specifically focusing on the distinction between intrinsic hallucinations and extrinsic knowledge poisoning. Finally, it introduces the concept of "Evaluation Agents" as a mechanism for automated auditing.
+
+\section{Large Language Models and Generative AI}
+\label{sec:llm_overview}
+
+Large Language Models (LLMs) represent a class of deep learning models trained on massive corpora of text data to predict likelihood distributions over sequences of tokens. The current state-of-the-art models, such as GPT-4 and Llama 3, are built upon the \textbf{Transformer} architecture introduced by \textcite{vaswani2017attention}.
+
+\subsection{The Transformer Architecture}
+The core innovation of the Transformer is the \textit{Self-Attention} mechanism, which allows the model to weigh the importance of different words in a sequence relative to one another, regardless of their positional distance. This enables the capture of long-range dependencies and semantic context far more effectively than previous Recurrent Neural Networks (RNNs).
+
+\subsection{Parametric Knowledge and Limitations}
+LLMs store knowledge within their weights (parameters) during the pre-training phase. This is referred to as \textit{parametric knowledge}. While powerful, this approach suffers from two fundamental limitations:
+\begin{enumerate}
+    \item \textbf{Knowledge Cutoff:} The model's knowledge is static and limited to the data available up to the training date.
+    \item \textbf{Hallucination:} Because LLMs are probabilistic engines designed to maximize token likelihood rather than factual accuracy, they frequently generate plausible but incorrect statements when the required information is absent from their parametric memory \parencite{ji2023survey}.
+\end{enumerate}
+
+\section{Retrieval-Augmented Generation (RAG)}
+\label{sec:rag_architecture}
+
+Retrieval-Augmented Generation (RAG) was proposed by \textcite{lewis2020rag} to mitigate the limitations of static LLMs. RAG creates a semi-parametric model by combining a pre-trained generator (the LLM) with a dense vector retriever.
+
+% Placeholder for RAG Architecture Figure
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{images/rag_architecture.png}
+    \caption{Schematic of the RAG architecture: Query $\rightarrow$ Retriever $\rightarrow$ Generator $\rightarrow$ Response.}
+    \label{fig:rag_arch}
+\end{figure}
+
+\subsection{Mathematical Formulation}
+Formally, RAG models the probability of generating an output sequence $y$ given an input $x$ by marginalizing over a set of retrieved documents $z$. The generation probability is defined as:
+
+\begin{equation}
+    P(y|x) = \sum_{z \in Z} P_{\eta}(z|x) \cdot P_{\theta}(y|x, z)
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $P_{\eta}(z|x)$ is the probability of retrieving document $z$ given query $x$ (the \textbf{Retriever}).
+    \item $P_{\theta}(y|x, z)$ is the probability of generating answer $y$ given query $x$ and document $z$ (the \textbf{Generator}).
+\end{itemize}
+
+\subsection{Dense Retrieval and Vector Embeddings}
+In modern RAG implementations, retrieval is typically performed using Dense Passage Retrieval (DPR) or similar embedding models such as Sentence-BERT \parencite{reimers2019sentence}. Both the user query $q$ and the documents $d$ are mapped to a high-dimensional vector space. Relevance is calculated using \textbf{Cosine Similarity}:
+
+\begin{equation}
+    \text{sim}(q, d) = \frac{\mathbf{v}_q \cdot \mathbf{v}_d}{\|\mathbf{v}_q\| \|\mathbf{v}_d\|}
+\end{equation}
+
+This reliance on vector similarity is the primary attack surface for the security threats discussed in this thesis, as semantic closeness does not imply factual truth.
+
+More recent embedding models, such as \texttt{snowflake-arctic-embed2}, produce 1024-dimensional representations and have demonstrated stronger retrieval quality on standard benchmarks compared to the 384-dimensional all-MiniLM-L6-v2 model. The choice of embedding model introduces a trade-off between retrieval fidelity and computational cost that is explored empirically in Chapter~\ref{ch6_experiments}.
+
+\section{The Threat Landscape: Hallucination vs. Poisoning}
+\label{sec:threat_landscape}
+
+It is crucial to distinguish between natural errors and adversarial attacks in RAG pipelines.
+
+\subsection{Hallucination (Intrinsic Error)}
+Hallucination refers to the generation of unfaithful or nonsensical text. In the context of RAG, this often occurs when the retrieved context is irrelevant, causing the model to ignore the context and revert to its (potentially flawed) parametric memory. This is a reliability issue, not necessarily a security issue.
+
+\subsection{Knowledge Poisoning (Extrinsic Attack)}
+\label{subsec:knowledge_poisoning}
+Knowledge Poisoning, or Corpus Poisoning, is a targeted security threat. Here, an adversary injects malicious documents into the external knowledge base. These documents are often engineered using \textit{Trigger Phrases} or optimized vector embeddings to ensure they are retrieved for specific queries \parencite{zou2024poisoned}.
+
+% Placeholder for Poisoning Attack Figure
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{images/poisoning_attack.png}
+    \caption{Knowledge poisoning attack flow: adversarial documents are injected into the corpus and retrieved for target queries, manipulating the generated output.}
+    \label{fig:poisoning_attack}
+\end{figure}
+
+Unlike "Data Poisoning" (which affects model training weights), Knowledge Poisoning affects the \textit{inference context}. A successful attack leads to \textbf{Indirect Prompt Injection}, where the poisoned document contains instructions that override the system prompt, forcing the LLM to output misinformation or malicious content.
+
+\section{Trustworthiness in AI Systems}
+\label{sec:trustworthiness}
+
+Trustworthiness in Generative AI is a composite attribute comprising three key dimensions:
+
+\begin{enumerate}
+    \item \textbf{Faithfulness:} The degree to which the generated answer is derived strictly from the retrieved context, without adding external hallucinations.
+    \item \textbf{Factuality:} The alignment of the generated answer with established world knowledge or ground truth.
+    \item \textbf{Robustness:} The system's ability to maintain performance and safety boundaries in the presence of adversarial inputs or noisy data.
+\end{enumerate}
+
+Current evaluation frameworks often measure Faithfulness but neglect Robustness against poisoning, creating the research gap addressed by this thesis.
+
+\section{Evaluation Agents and Automated Verification}
+\label{sec:eval_agents}
+
+To address the scalability limits of human evaluation, two predominant paradigms have emerged: \textbf{LLM-as-a-Judge}, where a Large Language Model evaluates the outputs of another AI system using reasoning frameworks such as Chain-of-Thought \parencite{wei2022chain}, and \textbf{Model-Based Verification}, where dedicated models (e.g., NLI classifiers) perform structured verification without LLM involvement.
+
+In this thesis, the Evaluation Agent adopts the latter approach. It serves as a defensive middleware applying \textbf{Natural Language Inference (NLI)} to classify retrieval-response pairs as Entailed, Contradictory, or Neutral, combined with rule-based detection for adversarial patterns. This design avoids reliance on LLM-as-a-Judge, leveraging instead the deterministic, interpretable outputs of NLI models and explicit poisoning-detection logic to automate the identification of misinformation and knowledge poisoning attempts.
+
+\section{Summary}
+This chapter defined the RAG architecture and mathematically formalized the retrieval process. It highlighted the critical vulnerability of dense retrieval to knowledge poisoning attacks and defined the key dimensions of trustworthiness. The next chapter will review existing literature to identify specific gaps in current defense mechanisms.

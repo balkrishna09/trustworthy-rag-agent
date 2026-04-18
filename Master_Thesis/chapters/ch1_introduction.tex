@@ -1,0 +1,108 @@
+% \chapter{Introduction}
+
+% \section{Background and Motivation}
+% % Connect RAG, trustworthiness, security, misinformation, data poisoning.
+% % Include real-world motivation (e.g., RAG for documentation, defense, software systems).
+
+% \section{Problem Statement}
+% % Clearly define what is untrustworthy about current RAG systems.
+% % Mention misinformation and data poisoning risks in AI pipelines.
+
+% \section{Research Objectives and Questions}
+% % Main research question.
+% % Sub-questions aligned with evaluation agent, RAG trust, security.
+
+% \section{Research Scope and Limitations}
+% % Boundaries: datasets, models, attack types, evaluation constraints.
+
+% \section{Thesis Structure}
+% % Short description of each chapter.
+
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Background and Motivation}
+\label{sec:background}
+
+The rapid evolution of Natural Language Processing (NLP) has culminated in the widespread adoption of Large Language Models (LLMs) such as GPT-4, Llama, and Claude. Built upon the Transformer architecture \parencite{vaswani2017attention}, these models have demonstrated unprecedented capabilities in reasoning, code generation, and semantic understanding. Consequently, they act as foundational engines for applications ranging from automated software engineering to legal analytics.
+
+However, the efficacy of standalone LLMs is fundamentally constrained by their static nature. Once trained, the parametric knowledge of a model is frozen, rendering it incapable of accessing real-time events or private, domain-specific data. Furthermore, LLMs suffer from a critical reliability issue known as \textit{hallucination}. Hallucination occurs when a model generates content that is grammatically plausible and semantically coherent but factually incorrect \parencite{ji2023survey}. This phenomenon arises because the model prioritizes statistical likelihood over factual verification.
+
+To address the challenges of knowledge obsolescence and hallucination, the research community introduced Retrieval-Augmented Generation (RAG) \parencite{lewis2020rag}. The RAG paradigm alters the generative process by introducing an intermediate retrieval step. Before generating a response, the system queries an external knowledge base to fetch documents relevant to the user’s input. These retrieved documents are then fed into the generator’s context window, grounding the output in specific, evidence-based data.
+
+Despite these advancements, the integration of external retrieval mechanisms introduces a new and arguably more insidious attack surface: the reliability of the retrieved data itself. The foundational assumption of standard RAG architectures is that the external knowledge base is benign and accurate. Recent scholarship suggests this assumption is increasingly dangerous in open-world deployments. As RAG systems ingest unstructured data from third-party sources, they become vulnerable to \textit{Knowledge Poisoning} and \textit{Adversarial Retrieval Attacks} \parencite{zou2024poisoned}.
+
+In a poisoning scenario, an adversary injects malicious documents into the retrieval corpus. These documents are optimized to maximize semantic similarity with target queries, ensuring they are retrieved by the system. Once retrieved, these "poisoned" contexts can manipulate the LLM into generating misinformation or biased advice—a technique often referred to as indirect prompt injection. As AI systems evolve toward \textit{Agentic RAG}, where autonomous agents actively plan workflows based on retrieved data, the inability to distinguish between authentic evidence and adversarial noise poses a severe threat to the integrity of AI-driven decision-making.
+
+\section{Problem Statement}
+\label{sec:problem_statement}
+
+The central problem addressed in this thesis is the \textbf{Security-Reliability Gap} in current Retrieval-Augmented Generation architectures. While RAG systems successfully mitigate the hallucination of non-existent facts, they lack robust mechanisms to verify the truthfulness and safety of the facts they retrieve. They inherently trust the retrieval output, operating under the assumption that high semantic relevance equates to factual truth.
+
+This vulnerability manifests in three distinct dimensions within the current State of the Art:
+
+\begin{enumerate}
+    \item \textbf{Vulnerability to Semantic Adversarial Attacks:} Standard dense retrieval methods rely on vector similarity. Attackers can exploit this by crafting "poisoned" documents containing malicious payloads that are semantically identical to legitimate queries \parencite{zou2024poisoned}. Current RAG systems lack a secondary verification layer to detect these anomalies.
+    
+    \item \textbf{Limitations of Existing Evaluation Frameworks:} Current evaluation tools, such as RAGAS \parencite{es2024ragas} or ARES \parencite{saadfalcon2024ares}, focus primarily on "faithfulness" and "context relevance." They measure whether the answer reflects the context but do not assess the validity of the context itself. If a RAG system faithfully answers a user question based on a poisoned document, existing metrics would rate the system highly, despite the output being factually compromised.
+    
+    \item \textbf{Absence of Autonomous Defense Mechanisms:} Most defenses against data poisoning rely on offline data cleaning. There is a critical need for an online, autonomous \textit{Evaluation Agent} capable of acting as a "trust layer" during the inference pipeline to score, verify, and filter retrieved data before generation.
+\end{enumerate}
+
+Consequently, without such a defense mechanism, RAG systems risk becoming conduits for targeted misinformation campaigns. The research problem can be summarized as follows:
+
+\begin{displayquote}
+Existing RAG architectures lack real-time, autonomous capabilities to distinguish between benign evidence and adversarial data poisoning, rendering them susceptible to knowledge injection attacks that compromise system integrity.
+\end{displayquote}
+
+\section{Research Objectives}
+\label{sec:objectives}
+
+The overarching aim of this thesis is to design, implement, and evaluate a \textbf{Trustworthy RAG Framework} that integrates an autonomous Evaluation Agent. This agent serves as a defensive middleware, validating the factual integrity of retrieved documents and detecting signs of knowledge poisoning.
+
+The specific objectives are defined as follows:
+
+\begin{itemize}
+    \item \textbf{Objective 1:} To design an autonomous evaluation agent utilizing Natural Language Inference (NLI) to assess factual consistency between retrieved evidence and generated responses.
+    \item \textbf{Objective 2:} To develop detection algorithms specifically for "knowledge poisoning" attempts, distinguishing between natural data noise and adversarial injections.
+    \item \textbf{Objective 3:} To formulate a composite \textit{Trust Index} metric that aggregates scores from factuality, reliability, and integrity dimensions.
+    \item \textbf{Objective 4:} To empirically evaluate the proposed framework’s robustness against known retrieval attack vectors compared to standard RAG baselines.
+\end{itemize}
+
+\section{Research Questions}
+\label{sec:research_questions}
+
+To address the identified problem and achieve the stated objectives, this thesis answers the following Main Research Question (RQ) and supporting Sub-Questions:
+
+\textbf{Main Research Question (RQ):}
+\textit{How can an autonomous Evaluation Agent be designed and integrated within Retrieval-Augmented Generation (RAG) systems to detect misinformation and data poisoning, thereby improving the trustworthiness and security of AI-generated content?}
+
+\textbf{Sub-Questions:}
+\begin{itemize}
+    \item \textbf{RQ1:} What computational strategies (e.g., NLI, semantic discrepancy detection) are effective for detecting misinformation and poisoning in retrieved contexts?
+    \item \textbf{RQ2:} How can a composite "Trust Index" be mathematically formulated to quantify the reliability of a RAG response?
+    \item \textbf{RQ3:} To what extent does the inclusion of an Evaluation Agent enhance the security performance of RAG pipelines compared to baseline systems, what are the trade-offs in latency, and how does the choice of LLM and embedding model affect the Trust Index's discriminative performance?
+\end{itemize}
+
+\section{Research Scope and Delimitations}
+\label{sec:scope}
+
+This thesis focuses on the evaluation and detection layer of RAG pipelines. The scope is defined as follows:
+\begin{itemize}
+    \item The work utilizes open-source LLMs (Llama 3.3 70B and Qwen 3.5 35B) accessed via the FARMI computing cluster and does not aim to pre-train models from scratch. Two embedding models (all-MiniLM-L6-v2 and Snowflake Arctic Embed2) are evaluated in a 2×2 factorial design to assess the sensitivity of the Trust Index to model selection.
+    \item Experiments will be conducted on open-source datasets such as FEVER and TruthfulQA, alongside synthetic poisoned corpora.
+    \item The scope is limited to \textit{textual} retrieval and generation; multimodal extensions (images/audio) are considered future work.
+    \item The study focuses on "Knowledge Injection" attacks (poisoning the database) rather than model weight poisoning or direct jailbreaking prompts.
+\end{itemize}
+
+\section{Thesis Structure}
+\label{sec:structure}
+
+The remainder of this thesis is organized as follows:
+\textbf{Chapter \ref{ch2_theory_background}} reviews the theoretical foundations of RAG and adversarial AI. 
+\textbf{Chapter \ref{ch3_literature_review}} presents a systematic literature review identifying gaps in current defense mechanisms. 
+\textbf{Chapter \ref{ch4_methodology}} details the research design and system architecture. 
+\textbf{Chapter \ref{ch5_eval_agent}} describes the implementation of the Evaluation Agent. 
+\textbf{Chapter \ref{ch6_experiments}} presents the experimental results and robustness analysis. 
+\textbf{Chapter \ref{ch7_discussion}} discusses the implications of the findings. 
+Finally, \textbf{Chapter \ref{ch8_conclusion}} concludes with future research directions.

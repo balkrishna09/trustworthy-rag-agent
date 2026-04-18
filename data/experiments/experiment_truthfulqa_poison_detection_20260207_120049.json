@@ -1,0 +1,27 @@
+{
+  "config": {
+    "name": "truthfulqa_poison_detection",
+    "description": "Evaluate poison detection on TruthfulQA with 30% poisoned documents",
+    "num_samples": 10,
+    "poison_ratio": 0.3,
+    "top_k": 3,
+    "llm_model": "llama3.3:70b",
+    "nli_model": "facebook/bart-large-mnli",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "trust_threshold": 0.5,
+    "poison_threshold": 0.7,
+    "trust_alpha": 0.4,
+    "trust_beta": 0.35,
+    "trust_gamma": 0.25
+  },
+  "metrics": {
+    "total_samples": 20,
+    "accuracy": 0.55,
+    "precision": 0.5263157894736842,
+    "recall": 1.0,
+    "f1_score": 0.6896551724137931,
+    "true_positives": 10,
+    "true_negatives": 1,
+    "false_positives": 9,
+    "false_negatives": 0,
+    "avg_trust_clean": 

@@ -1,0 +1,135 @@
+\chapter{Discussion}
+\label{ch7_discussion}
+
+This chapter interprets the empirical findings reported in Chapter~\ref{ch6_experiments} in the context of the three Research Questions stated in Chapter~\ref{ch:introduction}. It articulates the specific theoretical and practical contributions of this work, discusses the implications for real-world deployment of trustworthy RAG systems, identifies the study's limitations, and reflects on the ethical considerations surrounding adversarial AI evaluation research.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Interpretation of Key Findings}
+\label{sec:disc_findings}
+
+\subsection{RQ1: Detection Effectiveness of the Evaluation Agent}
+
+\textit{How effectively can an autonomous Evaluation Agent detect misinformation and knowledge poisoning in a RAG pipeline?}
+
+The results reveal a clear detection hierarchy across the four adversarial strategies, and the answer to RQ1 is nuanced: the Evaluation Agent is highly effective against overt poisoning strategies but structurally limited against subtle in-place modifications.
+
+\textbf{Instruction injection} is the most detectable strategy, achieving 100\% recall in per-strategy experiments. The Evaluation Agent's linguistic pattern detector reliably identifies instruction-override phrases (e.g., ``IMPORTANT: Ignore previous context''), and the intra-document NLI component detects the structural inconsistency introduced when such phrases are appended to otherwise coherent documents. This finding confirms that prompt injection attacks --- which \textcite{greshake2023indirect} identified as a critical threat to LLM-integrated systems --- are amenable to surface-level detection when the injection is syntactically distinct from the host document.
+
+\textbf{Contradiction} poisoning achieves moderate detection (33--89\% recall across experiments), primarily through intra-document NLI contradiction signals. When a contradicting sentence is appended to a document, the NLI model detects semantic inconsistency between the document's two halves. Detection is partial rather than complete because the NLI signal strength varies with sentence specificity: generic contradiction markers (e.g., ``Contrary to popular belief'') produce weaker NLI signals than factually specific contradictions.
+
+\textbf{Entity swap} and \textbf{subtle manipulation} represent the architectural limit of the current approach, achieving only 16.7\% recall in per-strategy experiments. These strategies operate through in-place text modifications --- replacing numbers, proper nouns, or qualifiers within the original sentence structure --- leaving no appended content for intra-document NLI or pattern detectors to flag. The modified document is semantically close to the clean version and produces nearly identical NLI scores. Detecting these attacks would require external world-knowledge reasoning (e.g., verifying that ``Berlin'' is an incorrect answer to a question about France's capital) --- a capability beyond the current NLI-and-heuristic architecture.
+
+In the mixed-strategy 100-sample experiment, the system achieves 40\% overall recall with 100\% precision (zero false positives on clean content), demonstrating that the agent's detection is reliable when it fires but conservative in coverage. This precision-recall trade-off reflects a deliberate design choice: false positives on clean content undermine user trust in the system's warnings, making precision the higher-priority metric in high-stakes deployments.
+
+\subsection{RQ2: Reliability and Calibration of the Trust Index}
+
+\textit{How reliably does the Trust Index quantify trustworthiness across diverse poisoning scenarios?}
+
+The Trust Index provides a calibrated, interpretable trustworthiness score across the evaluated scenarios. Several properties of its design are validated by the experiments.
+
+\textbf{Discriminative separation}: In the primary configuration (Llama~3.3~70B + all-MiniLM-L6-v2, K=3), clean responses achieve a mean Trust Index of $\bar{T}_{\text{clean}} = 0.830$, while poisoned contexts produce $\bar{T}_{\text{poison}} = 0.590$, a separation of 0.240 points. This separation is consistent across both embedding models for Llama (0.240 for MiniLM, 0.188 for Snowflake), indicating that the Trust Index's discriminative capacity is primarily driven by the NLI signal rather than by retrieval quality.
+
+\textbf{Non-linear dampener effectiveness}: The ablation study confirms that the dampener (Section~\ref{subsubsec:dampener}) plays a critical role under high-contamination conditions. Without the dampener, responses with high factuality scores (because the LLM ignores the poisoned portion) can exceed the $\tau = 0.5$ threshold despite high $P_{\text{poison}}$ values. The dampener imposes a multiplicative penalty that prevents this override, ensuring that a 90\% poison probability forces the final trust score below the classification threshold even when factuality and consistency appear healthy.
+
+\textbf{Weight sensitivity}: The ablation study demonstrates that the default weight configuration ($\alpha=0.40$, $\beta=0.35$, $\gamma=0.25$) yields the best overall F1 across the tested weight variations. Poison-heavy configurations ($\gamma=0.50$) maximise recall (88.9\%) at the cost of precision, while factuality-heavy configurations maximise accuracy. The default weights represent a balanced operating point --- a design choice validated by empirical evidence rather than arbitrary assignment.
+
+\textbf{LLM-dependency}: The 2×2 factorial experiment reveals a critical limitation of the Trust Index's universality: its component scores are sensitive to LLM generation style. Qwen~3.5~35B's hedged outputs (``Based on the provided context...'') systematically reduce $S_{\text{factuality}}$ below the threshold for clean responses, generating 21--23 false positives per run and causing the system to underperform the naive baseline (71\% vs.\ 85\%). This finding --- the first empirical demonstration of LLM-dependency in NLI-based trust scoring --- implies that the Trust Index threshold $\tau$ and weights must be calibrated per LLM before deployment.
+
+\subsection{RQ3: Security Performance and Operational Overhead}
+
+\textit{How does the inclusion of an Evaluation Agent improve RAG pipeline security, and how does model and retrieval-depth choice affect performance?}
+
+The Evaluation Agent delivers a statistically meaningful security improvement over the naive always-trust baseline when paired with Llama~3.3~70B: 91\% accuracy versus 85\% baseline (+7\%), with zero false positives on clean content. In absolute terms, 6 poisoned contexts out of 15 are correctly identified and blocked before generation, while 9 (the entity-swap and subtle strategy cases) pass the agent undetected.
+
+The 2×2 factorial experiment isolates two key factors:
+
+\textbf{LLM selection is the dominant factor.} Both Llama configurations (MiniLM and Snowflake) produce identical detection results (91\% accuracy, 57.1\% F1), whereas Qwen configurations achieve only 71\% accuracy with significantly lower F1 (31--38\%). The choice of embedding model produces negligible differences within the same LLM. This finding directly implies that system operators choosing models for Trust-Index-based evaluation should prioritise LLM output style over embedding dimensionality or retrieval quality.
+
+\textbf{Retrieval depth does not affect detection.} The K=3 vs.\ K=5 sensitivity analysis (Section~\ref{sec:ch6_topk}) confirms that increasing the number of retrieved documents from 3 to 5 produces no improvement in detection performance for Llama: TP, FP, and FN counts are identical, and the trust score separation changes by only 0.003. The detection ceiling is set by attack strategy difficulty, not by retrieval depth. This null result retroactively validates using K=3 in the 2×2 grid and provides a practical recommendation: K=3 achieves equivalent security at half the NLI inference cost ($\sim$9 vs.\ $\sim$20 calls per batch).
+
+The 13-second per-sample evaluation overhead --- dominated by CPU-based NLI inference and LLM generation latency on the FARMI cluster --- positions the system as suitable for \textbf{batch or high-stakes offline deployment} rather than real-time interactive applications. The evaluation overhead could be reduced substantially through GPU acceleration of the NLI model, which is addressed in Section~\ref{sec:future_work}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Contributions to Trustworthy and Secure AI Research}
+\label{sec:disc_contributions}
+
+This thesis makes six distinct contributions spanning theoretical frameworks, empirical findings, and practical system design.
+
+\textbf{Contribution 1: The Trust Index — a unified composite trustworthiness metric.}
+Existing evaluation frameworks for RAG systems, such as RAGAS \parencite{es2024ragas} and ARES \parencite{saadfalcon2024ares}, assess whether generated answers are faithful to retrieved context. They do not assess whether the retrieved context itself is trustworthy. The Trust Index ($T = \alpha \cdot S_{\text{factuality}} + \beta \cdot S_{\text{consistency}} + \gamma \cdot (1 - P_{\text{poison}})$) closes this gap by simultaneously quantifying factual grounding, inter-document consistency, and adversarial contamination in a single interpretable score. Its non-linear dampener ensures that strong poisoning signals can override high factuality scores --- a structural safeguard absent from linear aggregation approaches.
+
+\textbf{Contribution 2: A multi-signal Poison Detector for RAG pipelines.}
+The five-signal detection architecture (linguistic pattern matching, structural anomaly detection, intra-document NLI, cross-document consistency checking, and semantic outlier detection via embedding centroid deviation) provides defence-in-depth coverage across structurally diverse attack strategies. Relevance-weighted aggregation of per-document poison scores prevents low-relevance suspicious neighbours from dominating the batch-level decision, a design feature that substantially reduced false positives in preliminary evaluations (Round 10 of development, FEVER dataset).
+
+\textbf{Contribution 3: Empirical per-strategy characterisation of detection difficulty.}
+The per-strategy evaluation provides the first detailed characterisation of how detection difficulty varies across four adversarial strategies in a RAG-specific context. The hierarchy --- injection (100\% recall) $\gg$ contradiction (33--89\%) $\gg$ entity swap $\approx$ subtle ($\approx$17\%) --- provides concrete guidance for future defence design: strategies that append syntactically distinct content are detectable by surface-level signals; strategies that perform in-place semantic modifications require world-knowledge verification.
+
+\textbf{Contribution 4: Identification of an architectural detection limit.}
+Entity swap and subtle manipulation represent a demonstrated \textit{architectural limit} of NLI-and-heuristic approaches: they cannot be reliably detected without access to external factual grounding. This finding advances the scientific understanding of the attack surface in RAG systems and motivates the integration of external knowledge verification (e.g., Wikidata lookup, search-augmented fact checking) in future evaluation agent designs.
+
+\textbf{Contribution 5: First empirical demonstration of LLM-dependency in NLI-based trust scoring.}
+While the sensitivity of NLI models to phrasing has been noted in the NLP literature \parencite{honovich2022true}, this thesis provides the first empirical evidence that LLM generation style systematically affects Trust Index values in a RAG evaluation context. The finding that Qwen~3.5~35B's hedged outputs reduce mean clean trust scores by 0.20 points relative to Llama~3.3~70B --- sufficient to push a majority of clean responses below the classification threshold --- has direct implications for deployment: the Trust Index threshold must be treated as an LLM-specific hyperparameter, not a universal constant.
+
+\textbf{Contribution 6: Retrieval-depth invariance finding.}
+The K=3 vs.\ K=5 sensitivity analysis establishes a previously unreported property of NLI-based retrieval evaluation: detection performance is insensitive to retrieval depth for the attack strategies and LLM combination tested. This is not obvious a priori (more documents should theoretically improve the chance of exposing poisoned content), and the null result reveals that the bottleneck is the detector's inability to identify certain attack types regardless of batch size. This finding has practical implications for system design: NLI inference cost can be minimised without sacrificing detection quality.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Implications for Practical Deployment}
+\label{sec:disc_deployment}
+
+The experimental results suggest several concrete guidelines for organisations considering deployment of the Trustworthy RAG framework.
+
+\textbf{Target use cases.} The system's 13-second per-query evaluation overhead makes it unsuitable for real-time conversational applications. Its strongest use case is \textbf{high-stakes batch processing} where response latency is tolerable and the cost of misinformation is high: regulatory document review, medical information retrieval, legal evidence search, and automated fact-checking pipelines. The 100\% recall for instruction injection attacks makes the agent immediately valuable as a defence against prompt injection in document-processing workflows, which represent an increasingly common real-world attack vector \parencite{greshake2023indirect}.
+
+\textbf{LLM selection and per-model calibration.} Operators must calibrate the Trust Index threshold $\tau$ for each LLM used in the system. The fixed $\tau = 0.5$ is empirically tuned for Llama~3.3~70B's concise output style. Verbose or hedged LLMs require a lower threshold (or style-normalisation preprocessing) to avoid systematic false positives on clean content. A practical calibration procedure involves running the evaluation agent on a small held-out set of clean queries for the target LLM and selecting $\tau$ as the 10th percentile of the resulting clean trust score distribution.
+
+\textbf{Strategy-aware deployment.} The per-strategy detection hierarchy implies that the system's value depends heavily on the expected attack distribution. Against adversaries primarily using injection strategies (the most common form of prompt injection), the Evaluation Agent provides near-perfect recall. Against sophisticated adversaries using entity-swap or subtle manipulation techniques, the system's recall falls to approximately 17\%, offering limited additional protection beyond content-agnostic filtering. Operators in adversarial environments should be aware of this coverage gap and supplement the agent with external fact-checking for high-risk queries.
+
+\textbf{Transparency and human oversight.} Each evaluation produces component scores ($S_{\text{factuality}}$, $S_{\text{consistency}}$, $P_{\text{poison}}$), detected warning signals, and a categorical trust level (HIGH / MEDIUM / LOW / VERY LOW), enabling human reviewers to inspect the agent's reasoning rather than relying on a black-box decision. This design aligns with the principle of human-in-the-loop AI systems advocated in the EU AI Act's requirements for high-risk AI applications, particularly those involving safety-critical information provision.
+
+\textbf{Infrastructure recommendations.} GPU acceleration of the BART-large-MNLI model would reduce per-sample evaluation overhead from $\sim$13 seconds to under 2 seconds, enabling near-real-time deployment. Limiting cross-document pairwise NLI to the top-3 retrieved documents (K=3, as validated by the sensitivity analysis) minimises NLI calls without sacrificing detection quality. For systems using hedged LLMs, stripping common hedging prefixes from generated answers before NLI inference would reduce generation-style artefacts without affecting factual content evaluation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Limitations of the Study}
+\label{sec:disc_limitations}
+
+This study acknowledges seven principal limitations that bound the generalisability of its findings.
+
+\textbf{Limitation 1: Rule-based adversarial strategies.}
+The four poisoning strategies implemented in this thesis are rule-based transformations of existing documents. Real-world adversaries --- particularly those described by \textcite{zou2024poisoned} --- can employ gradient-optimized ``collision'' documents engineered to maximise vector similarity with target queries while containing arbitrary misinformation. Such documents may not exhibit the linguistic artefacts that the current detector relies upon, and their detection would require fundamentally different techniques (e.g., embedding-space anomaly detection or adversarial training of the NLI model).
+
+\textbf{Limitation 2: Detection ceiling for subtle attacks.}
+The 16.7\% recall for entity-swap and subtle strategies is a structural limit of the current approach, not a tuning deficiency. Increasing retrieval depth (validated by the K sensitivity analysis), adjusting thresholds, or reweighting the Trust Index components do not improve detection for these strategies. Addressing this limitation requires semantic world-knowledge integration, which is treated as future work.
+
+\textbf{Limitation 3: Evaluation latency.}
+The current implementation performs NLI inference on CPU, producing approximately 13 seconds of overhead per sample. This is impractical for interactive deployments. While GPU acceleration would resolve this, the thesis cannot empirically validate the latency improvement due to infrastructure constraints on the FARMI computing cluster.
+
+\textbf{Limitation 4: Fixed classification threshold.}
+The threshold $\tau = 0.5$ is constant across query types, domains, and LLMs. It does not adapt to the risk level of the query (a question about medication dosage warrants a lower trust threshold than a general knowledge query), the domain's prior probability of poisoning, or the generation style of the LLM. This inflexibility is a known limitation that the per-LLM calibration recommendation in Section~\ref{sec:disc_deployment} partially addresses but does not fully resolve.
+
+\textbf{Limitation 5: Attack Success Rate not measured.}
+The experiments measure whether the Evaluation Agent correctly \textit{flags} poisoned samples, not whether the LLM \textit{incorporates} the misinformation into its answer. True Attack Success Rate measurement would require semantic comparison of generated answers to injected claims. In practice, Llama~3.3~70B frequently ignores appended injection and contradiction content, producing factually correct answers from the legitimate portion of the document. This makes the injected content detectable by the Evaluation Agent even when it fails to influence the generated answer, potentially inflating the perceived utility of detection. Future work should measure ASR directly.
+
+\textbf{Limitation 6: Dataset and domain scope.}
+Experiments use two standardised benchmarks (TruthfulQA and FEVER) under controlled poisoning conditions. Performance on specialised corpora --- medical literature, legal documents, scientific papers --- may differ substantially, as these domains involve technical vocabulary, complex claim structures, and different LLM behaviour patterns. The generalisability of the Trust Index to such domains has not been empirically validated.
+
+\textbf{Limitation 7: Ground-truth convention for poisoning labels.}
+The current evaluation protocol labels a sample as poisoned based on document-level index alignment (whether the knowledge-base document corresponding to a query was modified), rather than directly checking whether a poisoned document was retrieved in that specific query's top-$K$ results. This convention is suitable for the controlled question-document paired benchmark setup used in this thesis, but it may overestimate or underestimate detection metrics in settings where retrieval frequently returns off-index neighbours. Future evaluations should implement retrieval-grounded poisoning labels to improve ecological validity.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Alignment with Ethical AI and Security Frameworks}
+\label{sec:disc_ethics}
+
+The development and evaluation of adversarial AI systems carries inherent ethical responsibilities. This section reflects on the ethical dimensions of the thesis in the context of established AI governance frameworks.
+
+\textbf{Transparency and explainability.} The Evaluation Agent is explicitly designed to produce interpretable outputs: component trust scores, detected warning signals, and a categorical trust level accompany every evaluation decision. This design aligns with the transparency and explainability requirements of the EU AI Act (Article 13) for high-risk AI systems, which mandate that automated decisions be explainable to affected parties. Unlike black-box LLM-as-a-Judge approaches, the agent's decisions can be audited and challenged by human reviewers.
+
+\textbf{Defensive intent and responsible disclosure.} The adversarial dataset generator and poisoning strategies implemented in this thesis are designed exclusively for controlled research evaluation. The code does not include optimized attack capabilities (such as gradient-based collision document generation) that would provide operational uplift to malicious actors. The strategies implemented are simplified, rule-based transformations intended to characterise detection difficulty, not to enable novel attacks. This approach aligns with responsible disclosure principles in security research: the system's limitations (particularly the near-zero recall for entity-swap attacks) are transparently documented, enabling downstream researchers and practitioners to make informed deployment decisions.
+
+\textbf{Human-in-the-loop design.} The Evaluation Agent is designed to augment rather than replace human oversight. It provides trust scores and warnings that inform human decision-making rather than autonomously filtering or censoring retrieved content. The categorical trust levels (HIGH / MEDIUM / LOW / VERY LOW) are calibrated to support graduated human review: HIGH-trust responses may be used directly, while VERY LOW-trust responses should be independently verified before use. This design philosophy aligns with the principle of meaningful human control advocated by the OECD Principles on Artificial Intelligence and the IEEE Ethically Aligned Design framework.
+
+\textbf{Dual-use considerations.} The detection techniques developed in this thesis --- particularly the linguistic pattern library and intra-document NLI --- could theoretically be inverted to inform adversaries about the specific features that the detector monitors, enabling more sophisticated evasion. This dual-use risk is inherent to all security research and is mitigated by the open publication of both the detection system and its known limitations, consistent with the principle that defensive knowledge should be equally accessible to defenders.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Summary}
+This chapter interpreted the experimental results in the context of the three Research Questions, articulated six distinct contributions, and identified limitations and deployment implications. The core finding is that the Evaluation Agent provides reliable, interpretable defence against overt poisoning strategies (instruction injection and contradiction) at the cost of an evaluation overhead that currently limits it to batch deployments. Entity-swap and subtle manipulation represent a fundamental architectural limit requiring world-knowledge integration to overcome. The LLM-dependency of the Trust Index and the retrieval-depth-invariance finding are novel empirical contributions that advance the design science of trustworthy RAG evaluation. The following chapter synthesises these findings into a final conclusion and outlines a research roadmap toward secure, auditable RAG systems.

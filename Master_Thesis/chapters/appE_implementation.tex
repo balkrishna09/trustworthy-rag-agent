@@ -1,0 +1,87 @@
+\chapter{Implementation Details and Repository Structure}
+\label{app:implementation}
+
+\section{Repository Structure}
+
+The project repository is organised as follows:
+
+\begin{verbatim}
+RAG Agent/
+├── src/
+│   ├── retriever/
+│   │   ├── embeddings.py        # Embedding model wrappers (local + API)
+│   │   └── retriever.py         # FAISS-based document retriever
+│   ├── evaluation_agent/
+│   │   ├── nli_verifier.py      # BART-MNLI NLI inference
+│   │   ├── poison_detector.py   # Five-signal poison detection
+│   │   ├── trust_index.py       # Trust Index computation + dampener
+│   │   └── evaluation_agent.py  # Orchestration class
+│   ├── generator/
+│   │   └── llm_generator.py     # OpenAI-compatible LLM interface
+│   └── pipeline/
+│       ├── rag_pipeline.py      # End-to-end RAG pipeline
+│       └── experiment_runner.py # Experiment execution + metrics
+├── src/experiments/
+│   └── poisoned_dataset.py      # Adversarial dataset generator
+├── configs/
+│   └── config.yaml              # Master configuration file
+├── data/
+│   ├── raw/                     # Downloaded benchmark datasets
+│   ├── processed/               # Preprocessed knowledge bases
+│   └── experiments/             # Serialised experiment results (JSON)
+├── Master_Thesis/
+│   ├── main.tex                 # LaTeX document root
+│   └── chapters/                # Chapter and appendix .tex files
+├── run_experiment.py            # CLI experiment runner
+└── requirements.txt             # Python package dependencies
+\end{verbatim}
+
+\section{Key Dependencies}
+
+\begin{table}[h]
+\centering
+\caption{Core Python dependencies and versions.}
+\label{tab:app_deps}
+\begin{tabular}{lll}
+\hline
+\textbf{Package} & \textbf{Version} & \textbf{Purpose} \\
+\hline
+Python         & 3.10+    & Runtime language \\
+LangChain      & 0.1+     & Pipeline orchestration \\
+faiss-cpu      & 1.7+     & Vector similarity search \\
+transformers   & 4.35+    & BART-MNLI NLI model \\
+sentence-transformers & 2.2+ & MiniLM-L6-v2 embeddings \\
+torch          & 2.0+     & NLI model inference (CPU) \\
+openai         & 1.0+     & FARMI API client \\
+datasets       & 2.14+    & HuggingFace dataset loading \\
+loguru         & 0.7+     & Structured logging \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Reproduction Instructions}
+
+To reproduce the primary experiment results (Llama~3.3~70B + all-MiniLM-L6-v2, TruthfulQA, 100 samples, mixed strategy, K=3):
+
+\begin{enumerate}
+    \item Install dependencies: \texttt{pip install -r requirements.txt}
+    \item Configure FARMI API credentials in \texttt{.env}: set \texttt{FARMI\_API\_KEY} and \texttt{FARMI\_API\_BASE}
+    \item Run: \texttt{python run\_experiment.py}; at the interactive prompt, select Llama~3.3~70B, all-MiniLM-L6-v2, and K=3
+    \item Results are saved to \texttt{data/experiments/} as a timestamped JSON file
+\end{enumerate}
+
+To reproduce the full 2×2 grid (K=3):
+
+\begin{verbatim}
+python run_experiment.py --grid --samples 50
+\end{verbatim}
+
+To reproduce the K=5 sensitivity analysis:
+
+\begin{verbatim}
+python run_experiment.py --grid --samples 50
+# Select K=5 at the interactive prompt, or set TOP_K_RETRIEVAL=5 in .env
+\end{verbatim}
+
+All experiment results used in this thesis are archived in \texttt{data/experiments/} with ISO 8601 timestamps in the filename. The primary results file is:\\
+\texttt{experiment\_truthfulqa\_llama3.3-70b\_all-MiniLM-L6-v2\_detection\_20260307\_112613.json}

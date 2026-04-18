@@ -1,0 +1,117 @@
+\chapter{Conclusion and Future Work}
+\label{ch8_conclusion}
+
+This thesis investigated the design and evaluation of an autonomous Evaluation Agent for detecting misinformation and knowledge poisoning in Retrieval-Augmented Generation (RAG) systems. Motivated by the growing deployment of RAG in high-stakes information environments and the demonstrable vulnerability of retrieval-augmented architectures to corpus poisoning attacks, the work addressed a gap left by existing evaluation frameworks: the absence of a runtime defence that simultaneously assesses factual grounding, inter-document consistency, and adversarial contamination.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Summary of Research Objectives and Findings}
+\label{sec:conc_summary}
+
+The thesis was structured around three Research Questions, each of which is now answered by the empirical evidence gathered across the experimental programme.
+
+\textbf{RQ1 — Detection Effectiveness.}
+\textit{How effectively can an autonomous Evaluation Agent detect misinformation and knowledge poisoning in a RAG pipeline?}
+
+The Evaluation Agent achieves high effectiveness against overt poisoning strategies but encounters a structural detection limit against subtle in-place modifications. Instruction injection is detected with 100\% recall; contradiction poisoning achieves 33--89\% recall depending on experimental conditions; entity-swap and subtle manipulation are detected at approximately 17\% recall --- a limit imposed by the absence of external world-knowledge reasoning in the current architecture. In the primary mixed-strategy 100-sample experiment, the system achieves 40\% overall recall with 100\% precision (zero false positives on clean content), confirming that the agent's detections are highly reliable when they occur.
+
+\textbf{RQ2 — Trust Index Reliability.}
+\textit{How reliably does the Trust Index quantify trustworthiness across diverse poisoning scenarios?}
+
+The Trust Index formula $T = 0.4 \cdot S_{\text{factuality}} + 0.35 \cdot S_{\text{consistency}} + 0.25 \cdot (1 - P_{\text{poison}})$, augmented with a non-linear dampener for high-contamination conditions, provides a calibrated and discriminative trustworthiness score. Mean trust score separation between clean (0.830) and poisoned (0.590) contexts confirms meaningful discriminative power. The ablation study validates the default weight configuration as the best overall trade-off. However, the 2×2 factorial experiment reveals that Trust Index values are LLM-dependent: verbose generation styles systematically reduce $S_{\text{factuality}}$ for clean responses, requiring per-LLM threshold calibration before production deployment.
+
+\textbf{RQ3 — Security Improvement and Overhead.}
+\textit{How does the Evaluation Agent improve RAG security compared to a baseline, and how do model and retrieval-depth choices affect performance?}
+
+The Evaluation Agent improves overall accuracy by +7\% over the naive always-trust baseline (91\% vs.\ 85\%) with Llama~3.3~70B and zero false positives on clean content, providing a +5\% improvement on the FEVER benchmark. The 2×2 factorial experiment establishes that LLM selection is the dominant performance factor: both Llama embedding configurations achieve identical results, while Qwen~3.5~35B underperforms the baseline by 16\% due to generation-style false positives. The K=3 vs.\ K=5 sensitivity analysis confirms that detection performance is retrieval-depth-invariant, and that K=3 is the cost-optimal retrieval depth for this system.
+
+Table~\ref{tab:conc_rq_summary} summarises the correspondence between each Research Question and its primary experimental evidence.
+
+\begin{table}[h]
+\centering
+\caption{Research Questions and corresponding experimental findings.}
+\label{tab:conc_rq_summary}
+\begin{tabular}{lp{5cm}p{6cm}}
+\hline
+\textbf{RQ} & \textbf{Finding} & \textbf{Evidence} \\
+\hline
+RQ1 & High recall for injection/contradiction; near-zero for entity-swap/subtle & Per-strategy experiments (Section~\ref{sec:ch6_detection}) \\
+RQ2 & Trust Index discriminates clean vs.\ poisoned; LLM-dependent & Main experiment + 2×2 grid (Sections~\ref{sec:ch6_baseline}, \ref{sec:ch6_grid}) \\
+RQ3 & +7\% vs baseline; LLM $\gg$ embedding effect; K-invariant & 2×2 grid + K sensitivity (Sections~\ref{sec:ch6_grid}, \ref{sec:ch6_topk}) \\
+\hline
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Theoretical and Practical Contributions}
+\label{sec:conc_contributions}
+
+\subsection{Theoretical Contributions}
+
+\textbf{The Trust Index as a unified security-reliability metric.}
+This thesis formalises the first composite metric designed to simultaneously evaluate the factual grounding, internal consistency, and adversarial safety of a RAG response in a single interpretable score. Existing frameworks such as RAGAS \parencite{es2024ragas} and ARES \parencite{saadfalcon2024ares} address faithfulness but not corpus integrity. The Trust Index bridges this gap and establishes a mathematical foundation for what the thesis terms the ``Trust-Security Gap'' in RAG evaluation.
+
+\textbf{Empirical characterisation of per-strategy detection difficulty.}
+The per-strategy experimental analysis provides empirical evidence of the varying detectability of four structurally distinct adversarial strategies in RAG corpora. The resulting detection hierarchy (injection $\gg$ contradiction $\gg$ entity-swap $\approx$ subtle) constitutes a reusable reference for future research on RAG defence design, establishing which attack families are amenable to surface-signal detection and which require semantic world-knowledge integration.
+
+\textbf{LLM-dependency of NLI-based trust scoring.}
+The 2×2 factorial experiment produces the first systematic empirical evidence that NLI-based trust assessment is sensitive to LLM generation style. This finding generalises beyond the specific models tested: any LLM whose output distribution differs significantly from the Trust Index's implicit calibration target will require per-model threshold adjustment, a consideration absent from prior Trust Index proposals.
+
+\textbf{Retrieval-depth invariance in NLI-based evaluation.}
+The K sensitivity analysis demonstrates a non-obvious architectural property: detection performance in NLI-based retrieval evaluation is insensitive to retrieval depth for the tested attack strategies. The null result (K=5 $\equiv$ K=3) advances the theoretical understanding of where evaluation agent performance is and is not bounded by retrieval quality.
+
+\subsection{Practical Contributions}
+
+\textbf{A working, reproducible implementation.}
+The complete Trustworthy RAG framework is implemented in Python 3.10 using LangChain, FAISS, HuggingFace Transformers (BART-large-MNLI), and an OpenAI-compatible API for LLM access. The implementation is modular and documented, with independently replaceable components for the retriever, NLI verifier, poison detector, and trust calculator.
+
+\textbf{Adversarial dataset generator.}
+The \textit{PoisonedDatasetGenerator} implements four rule-based poisoning strategies with configurable poison ratios and supports both TruthfulQA and FEVER benchmarks. It produces reproducible experimental datasets for future comparative studies and is extensible to additional strategies.
+
+\textbf{Reproducible experiment framework.}
+The experiment runner supports automated multi-model grid evaluation ($2 \times 2$ factorial design), per-strategy isolated experiments, ablation studies, and retrieval depth sensitivity analysis. Results are automatically serialised to JSON for offline analysis and reproducibility verification.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Recommendations for Future Research}
+\label{sec:future_work}
+
+The findings of this thesis identify seven high-priority directions for future research.
+
+\textbf{1. Gradient-optimized adversarial evaluation.}
+The four strategies evaluated in this thesis are rule-based approximations of real adversarial attacks. Future work should evaluate the Evaluation Agent against gradient-optimized collision documents of the type described by \textcite{zou2024poisoned}, which are engineered to maximise retrieval similarity while containing arbitrary misinformation. These attacks are likely to evade linguistic pattern detection and may require NLI-adversarial training or embedding-space anomaly detection to identify.
+
+\textbf{2. Per-LLM Trust Index calibration.}
+The LLM-dependency finding motivates the development of a systematic calibration procedure for the Trust Index threshold $\tau$ and component weights $\alpha$, $\beta$, $\gamma$. A practical approach would use a small LLM-specific validation set of clean queries to fit $\tau$ to the 10th percentile of the clean trust score distribution, or to train a lightweight per-LLM calibration layer that normalises NLI entailment scores for generation-style artefacts.
+
+\textbf{3. Semantic world-knowledge integration.}
+Entity-swap and subtle manipulation represent the architectural limit of the current surface-signal approach. Integrating external knowledge verification --- for example, querying structured knowledge bases such as Wikidata to verify entity-attribute relationships, or employing a search-augmented fact checker for open-domain claims --- could substantially improve recall for these attack families. The key design challenge is maintaining acceptable latency while adding an external verification call to each retrieved document.
+
+\textbf{4. GPU-accelerated evaluation pipeline.}
+Deploying the NLI model on GPU hardware would reduce per-sample evaluation latency from approximately 13 seconds to below 2 seconds, enabling near-real-time RAG evaluation. The current CPU-only implementation is a practical constraint of the FARMI cluster's resource allocation for student projects, not an inherent architectural limitation.
+
+\textbf{5. True Attack Success Rate measurement.}
+The current experimental framework measures the Evaluation Agent's \textit{detection} of poisoned samples, not the LLM's \textit{adoption} of injected misinformation. Future work should implement ASR measurement via embedding-similarity comparison between generated answers and injected claims, providing a complete end-to-end evaluation of the system's security value.
+
+\textbf{6. Retrieval-grounded poisoning labels.}
+The current benchmark protocol uses document-level index-aligned poisoning labels to determine whether each sample is poisoned. This is appropriate for the controlled paired benchmark setup used in this thesis, but future work should label poisoning based on whether at least one poisoned document is actually retrieved in the query's top-$K$ set. This would strengthen external validity in open-corpus settings where neighbour retrieval patterns are less deterministic.
+
+\textbf{7. Multimodal and multi-domain extension.}
+This thesis evaluates the framework on text-only English benchmarks (TruthfulQA and FEVER). Future research should extend the evaluation to domain-specific corpora (medical, legal, scientific), multilingual settings, and multimodal RAG systems incorporating images and structured data, where both the poisoning attack surface and the detection approach may differ substantially.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Roadmap Toward Secure and Auditable RAG Systems}
+\label{sec:conc_roadmap}
+
+The Trustworthy RAG framework developed in this thesis represents a first step toward a broader vision: RAG systems that are not merely accurate but \textit{auditable} --- systems that provide verifiable evidence for their trustworthiness claims alongside each generated response.
+
+\textbf{Near-term (1--2 years):} The most impactful immediate improvements are GPU-based NLI inference for real-time operation, per-LLM calibration procedures for Trust Index thresholds, and extension to a broader set of LLMs and embedding models. Standardising the Trust Index as a reporting metric in RAG evaluation benchmarks (alongside existing faithfulness and relevance metrics) would help establish it as a community baseline.
+
+\textbf{Medium-term (2--4 years):} Integrating external knowledge verification APIs (structured databases, search engines, specialised fact-checking services) into the evaluation pipeline would directly address the detection ceiling for in-place modification attacks. Streaming evaluation architectures --- where the Evaluation Agent operates on individual retrieved passages as they are returned by the retriever rather than on the full batch --- would reduce latency and support real-time interactive deployments.
+
+\textbf{Long-term (4+ years):} The ultimate goal is \textit{multi-agent evaluation}: architectures in which specialised agents handle factuality verification, security assessment, consistency checking, and provenance tracking as independent, composable modules. Combined with tamper-evident audit logs and cryptographic provenance chains for retrieved documents, such systems would provide end-to-end accountability for AI-generated information --- a critical requirement for deploying generative AI in regulated environments such as healthcare, finance, and public administration.
+
+The vulnerability of RAG pipelines to knowledge poisoning is not a temporary implementation flaw but a structural consequence of the architecture's reliance on unverified external content. As RAG systems become increasingly central to knowledge-intensive applications, the need for systematic, runtime trustworthiness evaluation will only grow. This thesis establishes that such evaluation is technically feasible, provides a validated framework and implementation, and identifies the specific challenges that must be overcome to make it universally deployable.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Closing Remark}
+
+Knowledge Poisoning turns the core strength of RAG systems --- their ability to ground responses in external evidence --- into a liability. By demonstrating that an autonomous Evaluation Agent can reliably detect overt poisoning strategies, characterise the architectural limits of surface-signal detection, and produce interpretable trust scores with validated discriminative power, this thesis advances the science of trustworthy generative AI. The path from the current system to one that is universally secure, real-time, and domain-agnostic is long, but the foundation --- a principled, empirically validated Trust Index and a multi-signal defence architecture --- is now established.

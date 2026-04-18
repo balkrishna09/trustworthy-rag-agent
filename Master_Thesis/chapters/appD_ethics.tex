@@ -1,0 +1,26 @@
+\chapter{Ethical Considerations and Responsible Research Statement}
+\label{app:ethics}
+
+\section{Research Ethics Declaration}
+
+This thesis conducts research on adversarial attacks and defences in AI systems. All experiments were performed in a controlled, isolated research environment using publicly available benchmark datasets (TruthfulQA and FEVER). No personally identifiable information was collected, processed, or stored at any stage of the research.
+
+The adversarial dataset generator and poisoning strategies implemented in this thesis are designed exclusively for the purpose of evaluating the Evaluation Agent's detection capabilities. They are not intended to serve as operational attack tools. The strategies are rule-based transformations (not gradient-optimized collision attacks) and do not provide meaningful uplift to malicious actors beyond what is already published in the open literature \parencite{zou2024poisoned, greshake2023indirect}.
+
+\section{Dual-Use Considerations}
+
+The detection techniques developed in this thesis --- particularly the linguistic pattern library and the intra-document NLI approach --- could theoretically inform adversaries about the specific features monitored by the detector. This dual-use risk is inherent to all published security research and is mitigated by the transparent documentation of both the detection system's capabilities and its known limitations (particularly the near-zero recall for entity-swap and subtle manipulation strategies). The publication of defensive limitations serves the broader research community by directing future work toward the correct problem: detection of in-place semantic modifications using external world-knowledge, rather than surface-level textual signals.
+
+\section{Data Handling}
+
+All datasets used in this research are publicly licensed:
+\begin{itemize}
+    \item \textbf{TruthfulQA} \parencite{lin2022truthfulqa}: Apache License 2.0
+    \item \textbf{FEVER} \parencite{thorne2018fever}: Creative Commons Attribution-ShareAlike 3.0 Unported
+\end{itemize}
+
+The synthetic poisoned datasets generated during experiments are derived from these sources and carry the same license restrictions. No proprietary, confidential, or sensitive data sources were used.
+
+\section{AI-Assisted Research Tools}
+
+Portions of the implementation code and thesis writing process benefited from AI-assisted development tools (Claude Code, Anthropic). All AI-generated content was reviewed, validated, and edited by the thesis author. The experimental results, analysis, and conclusions are the independent work of the author, verified against the actual codebase and experiment outputs.

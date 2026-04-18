@@ -1,0 +1,31 @@
+\chapter{System Configuration Parameters}
+\label{app:parameters}
+
+Table~\ref{tab:app_parameters} lists the complete set of configurable parameters used in the Trustworthy RAG framework, with default values and valid ranges.
+
+\begin{table}[h]
+\centering
+\caption{System configuration parameters and default values.}
+\label{tab:app_parameters}
+\begin{tabular}{llll}
+\hline
+\textbf{Parameter} & \textbf{Default} & \textbf{Range} & \textbf{Description} \\
+\hline
+\texttt{TOP\_K\_RETRIEVAL} & 3 & 1--10 & Documents retrieved per query \\
+\texttt{TRUST\_THRESHOLD} ($\tau$) & 0.5 & 0.0--1.0 & Binary trustworthiness decision boundary \\
+\texttt{POISON\_RATIO} & 0.30 & 0.0--1.0 & Fraction of poisoned documents in corpus \\
+$\alpha$ (factuality weight) & 0.40 & 0.0--1.0 & Trust Index factuality component weight \\
+$\beta$ (consistency weight) & 0.35 & 0.0--1.0 & Trust Index consistency component weight \\
+$\gamma$ (poison weight) & 0.25 & 0.0--1.0 & Trust Index poison safety component weight \\
+Dampener threshold & 0.70 & 0.5--1.0 & $P_{\text{poison}}$ above which dampener activates \\
+Dampener max reduction & 0.40 & 0.0--1.0 & Maximum trust score reduction at $P_{\text{poison}}=1.0$ \\
+FAISS confidence floor & 0.30 & 0.0--1.0 & Minimum retrieval score before trust penalty \\
+NLI entailment threshold & 0.40 & 0.0--1.0 & Minimum entailment score for factuality inclusion \\
+Cross-doc contradiction threshold & 0.70 & 0.5--1.0 & Threshold for high-severity cross-doc signal \\
+Intra-doc contradiction threshold & 0.70 & 0.5--1.0 & Threshold for intra-document split NLI \\
+\texttt{NLI\_MODEL} & \texttt{facebook/bart-large-mnli} & --- & NLI model identifier \\
+\texttt{EMBEDDING\_MODEL} & \texttt{all-MiniLM-L6-v2} & --- & Sentence embedding model \\
+\texttt{LLM\_MODEL} & \texttt{llama3.3:70b} & --- & Generation LLM model identifier \\
+\hline
+\end{tabular}
+\end{table}

@@ -1,0 +1,428 @@
+\chapter{Development of the Evaluation Agent}
+\label{ch5_eval_agent}
+
+This chapter presents the design and implementation of the core artifact of this thesis: the \textbf{Evaluation Agent}. The Evaluation Agent is introduced as a defensive middleware in the RAG pipeline, positioned between retrieval and final trust decision. Its purpose is to detect misinformation and knowledge poisoning in near real-time and provide an interpretable trustworthiness score for each generated response.
+
+\section{Design Philosophy and Functional Requirements}
+
+\subsection{Design Philosophy}
+The Evaluation Agent is designed with four principles:
+\begin{enumerate}
+    \item \textbf{Defense-in-depth:} No single signal is sufficient for robust detection. The agent combines factual verification, consistency analysis, and poisoning indicators.
+    \item \textbf{Interpretability:} Each trust decision must be explainable through component scores, warnings, and textual reports.
+    \item \textbf{Runtime practicality:} Evaluation must run in the online inference loop with manageable overhead.
+    \item \textbf{Modularity:} Components should be independently replaceable (e.g., alternative NLI model, different poison detector).
+\end{enumerate}
+
+\subsection{Functional Requirements}
+Based on the problem definition in Chapters~\ref{ch:introduction} and~\ref{ch4_methodology}, the Evaluation Agent must:
+\begin{itemize}
+    \item verify whether retrieved evidence supports the generated answer;
+    \item identify suspicious patterns indicating possible corpus poisoning;
+    \item quantify trustworthiness using a composite score in $[0,1]$;
+    \item provide both machine-readable outputs and human-readable explanations;
+    \item integrate seamlessly with the end-to-end RAG pipeline.
+\end{itemize}
+
+\section{Architecture and Internal Workflows}
+
+The implemented Evaluation Agent orchestrates three modules:
+\begin{itemize}
+    \item \textbf{NLI Verifier} (\texttt{nli\_verifier.py})
+    \item \textbf{Poison Detector} (\texttt{poison\_detector.py})
+    \item \textbf{Trust Index Calculator} (\texttt{trust\_index.py})
+\end{itemize}
+
+At runtime, the orchestration class (\texttt{evaluation\_agent.py}) executes:
+\begin{enumerate}
+    \item NLI verification between retrieved documents and generated answer;
+    \item poisoning analysis over retrieved documents (linguistic, structural, semantic, and consistency signals);
+    \item consistency estimation and retrieval-confidence adjustment;
+    \item final Trust Index computation and report generation.
+\end{enumerate}
+
+\subsection{Claim Extraction}
+In the current implementation, explicit claim decomposition is intentionally lightweight. Instead of extracting atomic claims via an additional parser, the generated response itself is treated as the primary hypothesis for verification. This design choice reduces complexity and latency in the first system version.
+
+Operationally:
+\begin{itemize}
+    \item \textbf{Premise:} each retrieved document;
+    \item \textbf{Hypothesis:} generated answer;
+    \item \textbf{Pairwise evaluation:} repeated for all retrieved documents.
+\end{itemize}
+
+This approach is suitable for short- to medium-length answers and supports direct alignment with NLI-based factual verification.
+
+\subsection{Evidence Retrieval}
+Evidence is supplied by the retriever in two forms:
+\begin{itemize}
+    \item retrieved text documents and their similarity scores;
+    \item document embeddings (used for semantic outlier detection).
+\end{itemize}
+
+The pipeline method \texttt{query\_with\_evaluation()} retrieves top-$k$ documents and forwards:
+\begin{itemize}
+    \item \texttt{retrieved\_documents} (text),
+    \item \texttt{retrieval\_scores},
+    \item \texttt{document\_embeddings}.
+\end{itemize}
+This avoids redundant re-embedding inside the Evaluation Agent.
+
+\subsection{Fact Verification and Scoring}
+\label{subsec:ch5_nli}
+
+The NLI Verifier uses \texttt{facebook/bart-large-mnli} through direct sequence classification (not zero-shot prompting). For each premise-hypothesis pair, the model outputs probabilities for:
+\begin{itemize}
+    \item contradiction,
+    \item neutral,
+    \item entailment.
+\end{itemize}
+
+Aggregated metrics include:
+\begin{itemize}
+    \item average entailment,
+    \item average contradiction,
+    \item maximum contradiction,
+    \item support ratio.
+\end{itemize}
+
+\paragraph{Factuality score.}
+The factuality score is computed with an entailment-focused strategy. Only documents with meaningful entailment signal are used for final factuality aggregation. If no such document exists, the system returns an inconclusive baseline ($0.5$) instead of forcing an extreme negative value. This reduces false penalties in cases where retrieved documents are only weakly related to the query.
+
+This design is motivated by a key empirical observation during development: \texttt{facebook/bart-large-mnli} assigns near-maximum contradiction scores ($\approx 0.99$) to \textit{both} genuine semantic contradictions \textit{and} to completely unrelated text pairs. The model cannot reliably distinguish between a document that actively contradicts the answer and one that is simply topically unrelated to it. Using raw contradiction scores as a negative factuality signal would therefore produce systematic false penalisation of off-topic but benign documents. The entailment-focused strategy resolves this by treating contradiction and neutral signals as inconclusive rather than as evidence of untruthfulness, reserving strong negative signals for the dedicated poison detection pathway.
+
+\subsection{Poison Detection Workflow}
+
+The poison detector combines multiple signals:
+\begin{enumerate}
+    \item \textbf{Linguistic patterns:} instruction override phrases, contradiction markers, format-injection traces.
+    \item \textbf{Structural anomalies:} excessive uppercase, suspicious repetition, abnormal tokens.
+    \item \textbf{Intra-document consistency:} NLI between first and second halves of the same document.
+    \item \textbf{Cross-document consistency:} pairwise contradiction checks among retrieved documents.
+    \item \textbf{Semantic outlier analysis:} embedding-based deviation from batch centroid.
+\end{enumerate}
+
+Each document receives a poison probability from combined signals with diminishing returns. A batch-level poison probability is then computed. In the final design, relevance-weighted aggregation is used when retrieval scores are available, so low-ranked suspicious neighbors do not dominate the final decision.
+
+\subsection{Trustworthiness Aggregation}
+\label{subsec:ch5_trust_index}
+
+\subsubsection{The Trust Index Formula}
+
+The Trust Index $T \in [0,1]$ is a weighted linear combination of three component scores:
+
+\begin{equation}
+\label{eq:trust_index}
+T = \alpha \cdot S_{\text{factuality}} + \beta \cdot S_{\text{consistency}} + \gamma \cdot (1 - P_{\text{poison}})
+\end{equation}
+
+where the default weights are $\alpha = 0.40$, $\beta = 0.35$, $\gamma = 0.25$, satisfying
+$\alpha + \beta + \gamma = 1$.
+
+\paragraph{Weight rationale.}
+The three weights reflect the precision and reliability of each signal source, as summarised in
+Table~\ref{tab:trust_weights}.
+
+\begin{table}[h]
+\centering
+\caption{Trust Index weight allocation and rationale.}
+\label{tab:trust_weights}
+\begin{tabular}{clcp{6.5cm}}
+\hline
+\textbf{Weight} & \textbf{Signal} & \textbf{Value} & \textbf{Rationale} \\
+\hline
+$\alpha$ & Factuality  & 0.40 & NLI entailment is a precise, model-based signal directly measuring
+                                whether the answer is grounded in retrieved evidence. Assigned the
+                                highest weight as the most reliable indicator. \\
+$\beta$  & Consistency & 0.35 & Cross-document agreement provides a strong proxy for knowledge base
+                                integrity without requiring access to external ground truth. \\
+$\gamma$ & Poison safety & 0.25 & Poison detection combines heuristic signals of varying precision.
+                                  Assigning a lower weight limits the influence of false positives
+                                  from pattern-based detectors on the final score. \\
+\hline
+\end{tabular}
+\end{table}
+
+The weight configuration was empirically validated through an ablation study reported in
+Chapter~\ref{ch6_experiments}, which tested four configurations including equal weights
+(0.33, 0.34, 0.33) and poison-heavy settings. The default weights yielded the best overall
+F1 performance, confirming that factuality and consistency together contribute more
+discriminative power than the poison score alone.
+
+\subsubsection{Insufficiency of the Linear Formula Under High Poisoning}
+\label{subsubsec:linear_insufficiency}
+
+A critical design problem arises when $P_{\text{poison}}$ is very high (near 1.0) but the
+factuality and consistency scores remain elevated. This occurs in practice when the language
+model \textit{ignores} the adversarial portion of a poisoned document and produces a
+factually correct answer grounded in the legitimate portion. In that case, NLI entailment
+scores are high, yet the retrieved context is demonstrably compromised.
+
+Consider the following concrete example. Suppose a poisoned context produces:
+\begin{itemize}
+    \item $S_{\text{factuality}} = 0.80$ (LLM's answer is well-supported by the document text)
+    \item $S_{\text{consistency}} = 0.70$ (documents broadly agree with each other)
+    \item $P_{\text{poison}} = 0.90$ (the poison detector reports high contamination)
+\end{itemize}
+
+Applying the linear formula directly:
+\begin{align}
+T_{\text{linear}} &= 0.40 \times 0.80 + 0.35 \times 0.70 + 0.25 \times (1 - 0.90) \notag \\
+                  &= 0.320 + 0.245 + 0.025 \notag \\
+                  &= 0.590
+\end{align}
+
+The result $T = 0.59$ exceeds the classification threshold $\tau = 0.5$, causing the system
+to label the response as \textit{trustworthy} despite a 90\% poison probability. The root
+cause is structural: because $\gamma = 0.25$, the poison term contributes at most 0.25 to
+$T$ when $P_{\text{poison}} = 0$, and 0 when $P_{\text{poison}} = 1.0$. The maximum
+possible poison-driven reduction in $T$ is therefore 0.25 points. Since $\alpha + \beta =
+0.75$, factuality and consistency can always push $T$ above $\tau = 0.5$ independently of
+the poison term when both scores are moderate or high. A purely linear aggregation is
+therefore insufficient for reliable detection under high-contamination conditions.
+
+\subsubsection{Non-Linear Poison Dampener}
+\label{subsubsec:dampener}
+
+To address this limitation, a multiplicative dampener is applied to the trust score whenever
+$P_{\text{poison}} > 0.70$. The threshold of 0.70 was chosen to distinguish the
+\textit{ambiguous} regime ($P_{\text{poison}} \leq 0.70$), where heuristic signals are
+inconclusive, from the \textit{confirmed contamination} regime ($P_{\text{poison}} > 0.70$),
+where multiple independent signals converge on a poisoning verdict.
+
+The dampener is defined as:
+\begin{equation}
+\label{eq:dampener}
+d(P_{\text{poison}}) =
+\begin{cases}
+1.0 & \text{if } P_{\text{poison}} \leq 0.70 \\[4pt]
+1.0 - 0.4 \cdot \dfrac{P_{\text{poison}} - 0.70}{0.30} & \text{if } P_{\text{poison}} > 0.70
+\end{cases}
+\end{equation}
+
+The final trust score after dampening is:
+\begin{equation}
+\label{eq:trust_final}
+T_{\text{final}} = T_{\text{linear}} \times d(P_{\text{poison}})
+\end{equation}
+
+The dampener is a linear interpolation from $d = 1.0$ at $P_{\text{poison}} = 0.70$ to
+$d = 0.60$ at $P_{\text{poison}} = 1.0$, producing a smooth, monotonically decreasing
+penalty over the contamination interval. Table~\ref{tab:dampener_values} lists the
+multiplier at representative poison probability values.
+
+\begin{table}[h]
+\centering
+\caption{Dampener multiplier $d$ at representative poison probability values.}
+\label{tab:dampener_values}
+\begin{tabular}{ccc}
+\hline
+$P_{\text{poison}}$ & Dampener $d$ & Interpretation \\
+\hline
+$\leq 0.70$ & 1.000 & No penalty applied (ambiguous zone) \\
+0.75        & 0.933 & Mild penalty ($-6.7\%$) \\
+0.80        & 0.867 & Moderate penalty ($-13.3\%$) \\
+0.85        & 0.800 & Moderate penalty ($-20.0\%$) \\
+0.90        & 0.733 & Strong penalty ($-26.7\%$) \\
+0.95        & 0.667 & Strong penalty ($-33.3\%$) \\
+1.00        & 0.600 & Maximum penalty ($-40.0\%$) \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Design properties of the dampener.}
+The form of Equation~\ref{eq:dampener} was chosen to satisfy three properties:
+\begin{enumerate}
+    \item \textbf{Continuity at the threshold:} $d(0.70) = 1.0$ ensures no discontinuous
+    jump in trust score at the activation boundary.
+    \item \textbf{Bounded maximum penalty:} $d(1.0) = 0.60$ limits the reduction to 40\%,
+    preventing the trust score from collapsing to near-zero in edge cases where the poison
+    detector over-fires. A floor prevents discarding responses that may still be usable
+    with human oversight.
+    \item \textbf{Proportionality:} the penalty grows linearly with contamination probability
+    in the interval $[0.70, 1.0]$, reflecting proportional confidence in the poisoning verdict.
+\end{enumerate}
+
+\paragraph{Worked example --- poisoned context.}
+Revisiting the example from Section~\ref{subsubsec:linear_insufficiency} with
+$T_{\text{linear}} = 0.590$ and $P_{\text{poison}} = 0.90$:
+\begin{align}
+d(0.90) &= 1.0 - 0.4 \times \frac{0.90 - 0.70}{0.30} = 1.0 - 0.4 \times 0.667 = 0.733 \\
+T_{\text{final}} &= 0.590 \times 0.733 = 0.432
+\end{align}
+The dampened score $T_{\text{final}} = 0.432$ falls below $\tau = 0.5$, correctly
+classifying the response as \textit{untrustworthy} and triggering an actionable warning
+to the consumer.
+
+\paragraph{Worked example --- clean context.}
+For a clean retrieval context with no poisoning signal:
+$S_{\text{factuality}} = 0.90$, $S_{\text{consistency}} = 0.85$, $P_{\text{poison}} = 0.10$:
+\begin{align}
+T_{\text{linear}} &= 0.40 \times 0.90 + 0.35 \times 0.85 + 0.25 \times 0.90 \notag \\
+                  &= 0.360 + 0.298 + 0.225 = 0.883
+\end{align}
+Since $P_{\text{poison}} = 0.10 \leq 0.70$, the dampener is not activated:
+$T_{\text{final}} = 0.883$, correctly classified as \textbf{HIGH} trust.
+
+\subsubsection{Retrieval Confidence Modifier}
+
+A secondary adjustment accounts for weak retrieval quality. When the highest retrieval
+similarity score among the top-$K$ documents falls below 0.30, the retrieved documents
+may not be genuinely relevant to the query. In this case the trust score is further
+penalised:
+\begin{equation}
+\label{eq:retrieval_confidence}
+T_{\text{final}} = T_{\text{final}} \times \bigl(0.5 + 0.5 \cdot r_{\max}\bigr),
+\quad \text{if } r_{\max} < 0.30
+\end{equation}
+where $r_{\max}$ is the maximum retrieval similarity score in the current batch. This
+modifier is inactive for normal retrieval quality ($r_{\max} \geq 0.30$) and avoids
+inflating trust scores for queries where retrieval has returned loosely related documents.
+
+\subsubsection{LLM-Dependency of the Trust Index}
+\label{subsubsec:llm_dependency}
+
+A non-obvious property of the Trust Index is that its value depends not only on the
+\textit{content} of the generated answer but also on the \textit{generation style} of the
+underlying LLM. The factuality component $S_{\text{factuality}}$ is computed by the NLI
+Verifier as the average entailment score between each retrieved document (premise) and the
+generated answer (hypothesis). If the LLM systematically produces hedged or verbose outputs
+--- for example, prefacing answers with phrases such as ``\textit{Based on the provided
+context, it appears that\ldots}'' or ``\textit{According to the available information\ldots}''
+--- the NLI model treats this stylistic hedging as reduced semantic commitment to the claim,
+lowering the entailment probability and, consequently, $S_{\text{factuality}}$.
+
+This effect is benign when the hedging reflects genuine uncertainty, but it becomes a
+systematic source of false positives when clean, factually accurate responses consistently
+receive low entailment scores purely due to generation style. In the comparative evaluation
+(Chapter~\ref{ch6_experiments}), Qwen 3.5 35B exhibits this behaviour: its verbose outputs
+reduce the mean clean trust score to $\approx 0.64$, compared to $\approx 0.83$ for
+Llama 3.3 70B, pushing a substantial fraction of clean responses below the $\tau = 0.5$
+threshold and causing 21--23 false positives out of 85 clean samples.
+
+This LLM-dependency is an intrinsic property of NLI-based trust assessment rather than a
+calibration error. It implies that the Trust Index threshold $\tau$ and the component
+weights $\alpha, \beta, \gamma$ should be treated as \textbf{LLM-specific hyperparameters}
+calibrated per model rather than universal constants. Alternatively, a style-normalisation
+step applied to the generated hypothesis before NLI inference could reduce generation-style
+artefacts without altering the factual content being evaluated.
+
+\subsubsection{Trust Level Classification}
+
+The final score $T_{\text{final}}$ is mapped to one of four categorical trust levels to
+support human-readable interpretation alongside the numeric score:
+
+\begin{table}[h]
+\centering
+\caption{Trust level thresholds and operational interpretation.}
+\label{tab:trust_levels}
+\begin{tabular}{clp{7cm}}
+\hline
+\textbf{Score range} & \textbf{Trust level} & \textbf{Operational meaning} \\
+\hline
+$T > 0.80$         & HIGH      & Response is well-supported by consistent, clean evidence.
+                                 Suitable for direct use. \\
+$0.50 < T \leq 0.80$ & MEDIUM  & Moderate support; some uncertainty present. Verify if
+                                 high-stakes decisions depend on this response. \\
+$0.30 < T \leq 0.50$ & LOW     & Weak support or suspicious signals detected. Independent
+                                 verification strongly recommended. \\
+$T \leq 0.30$      & VERY LOW  & Do not rely on this response. Retrieved context is likely
+                                 compromised or answer is unsupported. \\
+\hline
+\end{tabular}
+\end{table}
+
+The binary trustworthiness decision used in experiments is derived from the threshold
+$\tau = 0.50$: responses with $T_{\text{final}} \geq 0.50$ are classified as trustworthy
+and those with $T_{\text{final}} < 0.50$ are flagged as untrustworthy.
+
+\section{Integration with the RAG Pipeline}
+
+Integration is implemented in \texttt{src/pipeline/rag\_pipeline.py}. Two execution modes are provided:
+\begin{itemize}
+    \item \texttt{query()} --- retrieval + generation only;
+    \item \texttt{query\_with\_evaluation()} --- retrieval + generation + evaluation.
+\end{itemize}
+
+When evaluation is enabled:
+\begin{enumerate}
+    \item retriever returns documents, scores, and embeddings;
+    \item generator produces response from retrieved context;
+    \item Evaluation Agent computes trust score and detailed diagnostics;
+    \item pipeline returns a unified \texttt{RAGResponse} object with optional \texttt{evaluation} field.
+\end{enumerate}
+
+The Evaluation Agent is lazily initialized to avoid immediate loading of the NLI model in cases where only fast, non-evaluated querying is required.
+
+\section{Handling Conflicts, Uncertainty, and Evidence Weighting}
+
+\subsection{Conflict Handling}
+The system distinguishes between:
+\begin{itemize}
+    \item \textbf{true contradictions} (high contradiction scores),
+    \item \textbf{topic mismatch/neutrality} (weak relevance between texts).
+\end{itemize}
+Only strong contradictions are used as high-severity conflict signals. This design reduces false alarms from unrelated but non-malicious documents.
+
+\subsection{Uncertainty Handling}
+Three uncertainty controls are implemented:
+\begin{enumerate}
+    \item \textbf{Inconclusive factuality baseline:} return $0.5$ when no clear supporting evidence exists.
+    \item \textbf{Short-text guardrails:} very short document pairs are down-weighted or skipped in pairwise NLI consistency checks.
+    \item \textbf{Confidence-aware retrieval adjustment:} when the highest FAISS similarity score among the top-$K$ documents falls below a quality threshold ($s_{\text{best}} < 0.30$), the trust score is modestly reduced to reflect low-confidence retrieval (see Equation~\ref{eq:retrieval_confidence}). This penalty is not applied when retrieval quality is adequate ($s_{\text{best}} \geq 0.30$), preventing unnecessary suppression of trust in well-matched queries.
+\end{enumerate}
+
+\subsection{Evidence Weighting}
+The final poisoning risk uses relevance-aware weighting when retrieval scores are available:
+\begin{equation}
+P_{overall} = \sum_{i=1}^{k} w_i \cdot P_i, \quad w_i = \frac{s_i}{\sum_j s_j}
+\end{equation}
+where $s_i$ is retriever similarity and $P_i$ is document-level poison probability.
+
+This reduces spillover effects where a low-relevance poisoned neighbor would otherwise dominate a max-based aggregator.
+
+\section{Implementation Details and Optimization Strategies}
+
+\subsection{Core Data Structures}
+The implementation defines typed result structures for traceability:
+\begin{itemize}
+    \item \texttt{NLIResult}, \texttt{VerificationResult}
+    \item \texttt{PoisonSignal}, \texttt{DocumentPoisonResult}, \texttt{PoisonDetectionResult}
+    \item \texttt{TrustComponents}, \texttt{TrustIndexResult}
+    \item \texttt{EvaluationResult}
+\end{itemize}
+
+\subsection{Optimization Strategies}
+To maintain practical runtime:
+\begin{itemize}
+    \item \textbf{Lazy model loading:} NLI model loads only when first needed.
+    \item \textbf{Bounded pairwise checks:} document-pair comparisons are capped.
+    \item \textbf{Shared NLI instance:} both verifier and poison detector reuse the same verifier object.
+    \item \textbf{Fallback-safe behavior:} failure paths return neutral defaults rather than crashing the pipeline.
+\end{itemize}
+
+\subsection{High-Level Algorithm}
+\begin{verbatim}
+Input: query q, response r, retrieved docs D, scores S, embeddings E
+1) V <- NLI_Verifier.verify_answer(r, D)
+2) P <- Poison_Detector.detect_batch(D, E, S)
+3) C <- consistency(V, D)
+4) R <- retrieval_confidence(S)
+5) T <- TrustIndex.calculate(factuality(V), C, poison(P), R)
+6) return EvaluationResult(T, V, P, summary, report)
+\end{verbatim}
+
+\subsection{Output and Explainability}
+The agent returns:
+\begin{itemize}
+    \item numeric trust score and categorical trust level;
+    \item component contributions;
+    \item warnings and recommendation text;
+    \item compact summary and detailed formatted report.
+\end{itemize}
+
+This makes the module suitable for both quantitative experiments (Chapter~\ref{ch6_experiments}) and human-in-the-loop inspection.
+
+\section{Summary}
+
+This chapter presented the full development of the Evaluation Agent as the main artifact of the thesis. The implementation combines NLI-based factual verification, multi-signal poisoning detection, and a weighted Trust Index into a unified runtime evaluator. It is integrated with the RAG pipeline through a modular interface and designed for interpretable, online trust assessment. The next chapter reports empirical performance under clean and poisoned conditions.

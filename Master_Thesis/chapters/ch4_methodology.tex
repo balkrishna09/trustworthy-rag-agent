@@ -1,0 +1,157 @@
+% \chapter{Research Design and Methodology}
+% \label{ch4_methodology}
+% \section{Research Design Overview}
+% % State whether constructive, experimental, or applied design.
+
+% \section{System Architecture of the Trustworthy RAG Framework}
+% \subsection{Retrieval Module}
+% % Index, vector store, retriever type.
+
+% \subsection{Generation Module}
+% % LLMs used, prompt templates, decoding.
+
+% \subsection{Evaluation Agent}
+% % Role, inputs/outputs, decision logic (high-level, details in Chapter 5).
+
+% \subsection{Security and Verification Layer}
+% % How attacks, anomalies, or poisoning are detected/logged.
+
+% \section{Dataset Selection and Preparation}
+% % e.g., FEVER, TruthfulQA, HotpotQA, synthetic corpora; preprocessing.
+
+% \section{Experimental Scenarios}
+% % Baseline RAG, misinformation injection, data poisoning setups.
+
+% \section{Evaluation Metrics}
+% % Factuality (e.g., FActScore, NLI accuracy),
+% % Trust Index (precision/recall of misinformation detection),
+% % Latency and computational overhead.
+
+% \section{Implementation Tools and Environment}
+% % LangChain, LlamaIndex, HuggingFace, FAISS, Python, OpenAI/LLMs, hardware.
+
+% \section{Validation and Reproducibility Strategy}
+% % Seeds, configuration, code availability, experiment logging.
+
+% \section{Ethical and Security Considerations}
+% % Handling of harmful content, responsible disclosure, etc.
+
+
+\chapter{Research Design and Methodology}
+\label{ch4_methodology}
+
+This chapter outlines the methodological framework adopted to design, implement, and evaluate the proposed Trustworthy RAG System. The research follows the \textbf{Design Science Research (DSR)} paradigm, focusing on the creation of a novel artifact (the Evaluation Agent) to solve a specific problem (Knowledge Poisoning). The chapter details the threat model, the system architecture, the dataset construction strategy for simulating adversarial attacks, and the quantitative metrics used for evaluation.
+
+\section{Research Design Overview}
+\label{sec:design_overview}
+
+The research is structured into three distinct phases:
+\begin{enumerate}
+    \item \textbf{Phase 1: Dataset Preparation \& Injection.} Construction of a "Clean" baseline corpus (using FEVER/TruthfulQA) and the generation of a "Poisoned" corpus containing adversarial documents.
+    \item \textbf{Phase 2: System Development.} Implementation of the RAG pipeline integrated with the autonomous Evaluation Agent (detailed in Chapter \ref{ch5_eval_agent}).
+    \item \textbf{Phase 3: Empirical Evaluation.} A comparative analysis measuring the agent's ability to detect poisoning and its impact on system latency and retrieval accuracy.
+\end{enumerate}
+
+\section{Threat Model and Assumptions}
+\label{sec:threat_model}
+
+To evaluate security robustness, a specific Threat Model must be defined. This thesis assumes a "Black-Box Knowledge Injection" adversary.
+
+\subsection{Attacker Capabilities}
+The attacker has the following capabilities:
+\begin{itemize}
+    \item \textbf{Corpus Access:} The attacker can insert new documents into the external knowledge base (e.g., via a public wiki, forum, or document upload feature).
+    \item \textbf{Content Manipulation:} The attacker can craft text specifically designed to trigger specific keywords or semantic embeddings.
+\end{itemize}
+
+\subsection{Attacker Limitations}
+The attacker \textbf{cannot}:
+\begin{itemize}
+    \item Modify the internal weights or parameters of the LLM or the Retriever.
+    \item Access the system prompt or the internal logic of the Evaluation Agent.
+\end{itemize}
+
+\section{System Architecture}
+\label{sec:system_architecture}
+
+The proposed "Trustworthy RAG Framework" introduces a middleware layer between the retrieval and generation phases.
+
+
+
+\subsection{Components}
+\begin{itemize}
+    \item \textbf{The Retriever:} A dense vector store (FAISS) supporting two embedding backends evaluated in this thesis: (i) \texttt{all-MiniLM-L6-v2} (384-dimensional, local Sentence-BERT family) and (ii) \texttt{snowflake-arctic-embed2} (1024-dimensional, accessed via FARMI API). Both retrieve the top-$k$ semantically similar documents per query.
+    \item \textbf{The Evaluation Agent (The Artifact):} An autonomous module that acts as a "Gatekeeper." It analyzes the retrieved documents for semantic consistency and malicious patterns before they are passed to the generator.
+    \item \textbf{The Generator:} Two LLMs are evaluated: \texttt{llama3.3:70b} and \texttt{qwen3.5:35b}, both hosted on the FARMI computing cluster (Tampere University) via an OpenAI-compatible API. Llama 3.3 70B serves as the primary thesis baseline; Qwen 3.5 35B is included as a cross-model comparison point to assess the sensitivity of the Trust Index to LLM generation style.
+\end{itemize}
+
+\subsection{Multi-Model Evaluation Design}
+\label{subsec:factorial_design}
+
+To assess the sensitivity of the Trust Index to model selection, a \textbf{2×2 factorial experimental design} is employed, crossing two LLMs with two embedding models:
+
+\begin{equation*}
+\{\text{Llama 3.3 70B},\; \text{Qwen 3.5 35B}\} \;\times\;
+\{\text{all-MiniLM-L6-v2},\; \text{Snowflake Arctic Embed2}\}
+\end{equation*}
+
+This yields four experimental configurations, all run with identical hyperparameters (100 samples, 30\% poison ratio, $K=3$ retrieved documents, classification threshold $\tau=0.5$). The design allows isolation of LLM effects from embedding effects and tests whether the Trust Index generalizes across model choices or is fundamentally dependent on a specific generator's output style. A separate sensitivity analysis comparing $K=3$ and $K=5$ retrieval depths for the primary Llama~3.3~70B + all-MiniLM-L6-v2 configuration is presented in Section~\ref{sec:ch6_topk}.
+
+\section{Dataset Selection and Preparation}
+\label{sec:dataset_prep}
+
+To simulate realistic misinformation and poisoning scenarios, this study utilizes a combination of established benchmarks and synthetic adversarial data.
+
+\subsection{Base Datasets}
+\begin{itemize}
+    \item \textbf{FEVER (Fact Extraction and VERification):} Used for testing the agent's ability to verify claims against evidence \parencite{thorne2018fever}.
+    \item \textbf{TruthfulQA:} Used to evaluate the model's propensity to mimic human falsehoods \parencite{lin2022truthfulqa}.
+\end{itemize}
+
+\subsection{Synthetic Poisoning Generation}
+Since no standard "Poisoned RAG" dataset exists for this specific architecture, a synthetic dataset is generated using a custom \textit{PoisonedDatasetGenerator} inspired by \textcite{zou2024poisoned}. Four poisoning strategies are implemented:
+\begin{itemize}
+    \item \textbf{Contradiction:} Appends contradicting statements (e.g., ``Contrary to popular belief...'') to genuine documents.
+    \item \textbf{Injection:} Appends instruction-override phrases (e.g., ``IMPORTANT: Ignore previous context...'') to manipulate the LLM.
+    \item \textbf{Entity Swap:} Replaces entities or numbers in-place within the original text (e.g., swapping ``14 million'' for ``41 million''). Since domain-specific documents (such as TruthfulQA entries) rarely contain common geopolitical named entities, a three-level fallback is employed: (1) predefined entity substitution (e.g., Paris~$\rightarrow$~Berlin); (2) numeric value shifting via regular expressions when no named entity is present; (3) qualifier or negation swapping in the answer segment of the document (e.g., replacing ``is'' with ``is not''). If none of these produce a textual change, a plausible-sounding dispute sentence is appended as a last resort.
+    \item \textbf{Subtle:} Combines entity swap with minor qualifier additions for minimal, hard-to-detect modifications.
+\end{itemize}
+Experiments use 50 samples per run with a poison ratio of 30\% (i.e., 30\% of retrieved documents are poisoned). Per-strategy experiments isolate each attack type; mixed experiments combine all four strategies.
+
+\section{Evaluation Metrics}
+\label{sec:eval_metrics}
+
+To answer the Research Questions, the system is evaluated across three dimensions: Security, Reliability, and Performance.
+
+\subsection{Security Metrics (Detection Performance)}
+These metrics measure the Evaluation Agent's ability to identify poisoned documents (RQ1 & RQ2).
+\begin{itemize}
+    \item \textbf{Precision and Recall:} Measuring false positives (benign documents flagged as poison) and false negatives (poisoned documents missed).
+    \item \textbf{Poison Detection Rate (PDR):} The fraction of adversarially poisoned samples correctly identified and flagged by the Evaluation Agent before generation. Ground truth is assigned based on the document-level poisoning label (i.e., whether the knowledge base document corresponding to the query was modified), not on retrieval outcome. This is the primary security metric evaluated in this thesis (equivalent to Recall in binary classification).
+    \item \textbf{Attack Success Rate (ASR):} The percentage of attacks where the final generated answer mimics the injected misinformation. While ASR is a theoretically important metric, rule-based poisoning strategies (particularly Contradiction and Injection, which append content to genuine documents) yield low natural ASR even without the Evaluation Agent, since modern LLMs tend to prioritise the original document content over appended overrides. Measuring true ASR requires semantic comparison of generated answers to injected claims, which is treated as future work in Section~\ref{sec:future_work}.
+\end{itemize}
+
+\subsection{Reliability Metrics (The Trust Index)}
+The \textbf{Trust Index} ($T_{score}$) is a composite metric derived from the agent's internal logic:
+\begin{equation}
+    T_{score} = \alpha \cdot S_{factuality} + \beta \cdot S_{consistency} + \gamma \cdot (1 - P_{poison})
+\end{equation}
+where $S_{factuality}$ is the NLI-based factual consistency score, $S_{consistency}$ measures inter-document agreement, and $P_{poison}$ is the poison probability. Default weights are $\alpha=0.4$, $\beta=0.35$, and $\gamma=0.25$. A non-linear dampener is applied when $P_{poison} > 0.7$ to penalize highly poisoned content. Formally, the dampener $\delta$ reduces the trust score multiplicatively:
+\begin{equation}
+    \delta(P_{poison}) = 1 - 0.4 \cdot \frac{P_{poison} - 0.70}{0.30}, \quad P_{poison} > 0.70
+\end{equation}
+and the dampened score becomes $T_{\text{final}} = T \cdot \delta(P_{poison})$. At $P_{poison}=0.70$ no penalty is applied ($\delta=1.0$); at $P_{poison}=1.0$ the trust score is reduced by 40\% ($\delta=0.6$), ensuring that extreme poisoning signals override even strong factuality scores. A full derivation, worked examples, and the boundary-case analysis are provided in Chapter~\ref{ch5_eval_agent}.
+
+\subsection{Performance Metrics (RQ3)}
+\begin{itemize}
+    \item \textbf{Latency Overhead:} The additional time (in milliseconds) introduced by the Evaluation Agent per query.
+    \item \textbf{Throughput:} The number of queries processed per second compared to a baseline RAG system.
+\end{itemize}
+
+\section{Implementation Environment}
+\label{sec:implementation_env}
+
+The system is implemented using Python 3.10. The core libraries include \textbf{LangChain} for pipeline orchestration, \textbf{HuggingFace Transformers} for model loading (NLI: BART-MNLI), and \textbf{FAISS} for vector retrieval. Two LLMs (\texttt{llama3.3:70b} and \texttt{qwen3.5:35b}) and two embedding backends (\texttt{all-MiniLM-L6-v2} local and \texttt{snowflake-arctic-embed2} API) are hosted on the FARMI computing cluster (Tampere University) and accessed via an OpenAI-compatible API. The NLI model and evaluation pipeline run on CPU.
+
+\section{Summary}
+This chapter defined the Design Science methodology and the specific threat model (Knowledge Poisoning) used to stress-test the system. It detailed the architecture of the Trustworthy RAG framework and established the quantitative metrics for success. The next chapter will provide the detailed implementation logic of the Evaluation Agent.

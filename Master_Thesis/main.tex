@@ -1,0 +1,95 @@
+\documentclass[12pt,a4paper]{report} % or your university's class
+
+% ---------- Encoding & language ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+% ---------- Typography & layout ----------
+\usepackage{lmodern}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% ---------- Math / equations ----------
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+
+% ---------- Tables ----------
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{siunitx}
+
+% ---------- Figures ----------
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{caption}
+
+% ---------- References / hyperlinks ----------
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+\usepackage{csquotes}
+
+% ---------- Bibliography (biblatex + biber) ----------
+\usepackage[
+    backend=biber,
+    style=ieee,      % Uses numeric citations [1] and IEEE bibliography format
+    sorting=none     % CRITICAL: Sorts by order of appearance (Standard IEEE)
+]{biblatex}
+\addbibresource{reference.bib}
+
+% ---------- Other useful packages ----------
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\begin{document}
+
+% ---------- Front matter ----------
+\title{Trustworthy RAG: An Evaluation Agent for Detecting Misinformation and Knowledge Poisoning in Generative AI Systems}
+\author{Balkrishna Giri}
+\date{\today} % or fixed date
+
+\maketitle
+
+\begin{abstract}
+Retrieval-Augmented Generation (RAG) systems improve large language model reliability by grounding responses in external knowledge. However, RAG architectures inherently trust their retrieval output, creating a critical Security-Reliability Gap: high semantic relevance does not guarantee factual truth. Adversaries can exploit this by injecting malicious documents into the knowledge corpus --- a threat known as Knowledge Poisoning --- causing the system to generate targeted misinformation.
+
+This thesis proposes an autonomous Evaluation Agent as a defensive middleware within the RAG pipeline. The agent combines Natural Language Inference (NLI) for factual verification, a multi-signal Poison Detector (linguistic, structural, intra-document, cross-document, and semantic-outlier signals), and a composite Trust Index ($T = 0.4 \cdot F + 0.35 \cdot C + 0.25 \cdot (1-P)$) to produce an interpretable trustworthiness score for each generated response.
+
+Experiments on TruthfulQA and FEVER benchmarks with four adversarial poisoning strategies (contradiction, instruction injection, entity swap, and subtle manipulation) demonstrate that the system achieves 91\% accuracy and 57.1\% F1 score with 100\% precision (zero false positives) using Llama~3.3~70B, a +7\% improvement over the naive always-trust baseline. Instruction injection is detected with 100\% recall, while entity-swap and subtle manipulation remain near-undetectable at the textual level, representing an architectural limit of surface-signal-based approaches.
+
+A 2×2 factorial experiment (\{Llama~3.3~70B, Qwen~3.5~35B\} × \{all-MiniLM-L6-v2, Snowflake Arctic Embed2\}) reveals that the Trust Index is LLM-dependent: Qwen~3.5~35B's verbose generation style causes systematic false positives, underperforming the naive baseline by 16\%, while LLM selection dominates embedding model choice as the key performance factor. A retrieval depth sensitivity analysis ($K=3$ vs.\ $K=5$) confirms that detection performance is retrieval-depth-invariant: the 40\% recall ceiling is set by attack strategy difficulty, not by the number of documents retrieved.
+
+The work addresses a gap left by existing frameworks such as RAGAS and ARES, which measure faithfulness to context but not the integrity of the context itself.
+\end{abstract}
+
+\tableofcontents
+\listoffigures      % optional
+\listoftables       % optional
+
+% ---------- Main chapters ----------
+\include{chapters/ch1_introduction}
+\include{chapters/ch2_theory_background}
+\include{chapters/ch3_literature_review}
+\include{chapters/ch4_methodology}
+\include{chapters/ch5_eval_agent}
+\include{chapters/ch6_experiments}
+\include{chapters/ch7_discussion}
+\include{chapters/ch8_conclusion}
+
+% ---------- References ----------
+\printbibliography
+
+% ---------- Appendices ----------
+\appendix
+\include{chapters/appA_parameters}
+\include{chapters/appB_results}
+\include{chapters/appC_prompts}
+\include{chapters/appD_ethics}
+\include{chapters/appE_implementation}
+
+\end{document}

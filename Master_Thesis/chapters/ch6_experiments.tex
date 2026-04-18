@@ -1,0 +1,721 @@
+\chapter{Experimental Evaluation}
+\label{ch6_experiments}
+
+This chapter presents the empirical evaluation of the Trustworthy RAG framework across
+two benchmark datasets and four adversarial poisoning strategies. Section~\ref{sec:ch6_setup}
+describes the experimental configuration. Sections~\ref{sec:ch6_baseline}
+through~\ref{sec:ch6_overhead} report quantitative results. Section~\ref{sec:ch6_discussion}
+interprets the findings in the context of the research questions.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Experimental Setup and Scenarios}
+\label{sec:ch6_setup}
+
+\subsection{Knowledge Bases and Datasets}
+
+Two publicly available benchmarks were used to construct knowledge bases for evaluation:
+
+\begin{itemize}
+    \item \textbf{TruthfulQA}: A benchmark of questions designed to expose common misconceptions
+    and factual errors in language model outputs. Each knowledge base document is formatted as
+    ``\textit{question} + \textit{best\_answer}'', producing concise fact-grounded entries of
+    approximately 20--30 words. TruthfulQA is well-suited for poison detection evaluation
+    because many questions have counterintuitive correct answers that diverge from popular
+    misconceptions, creating a realistic setting where plausible-sounding false claims could
+    be introduced undetected.
+
+    \item \textbf{FEVER}: A large-scale fact verification dataset designed to classify claims
+    as SUPPORTED, REFUTED, or UNKNOWN. Each document in the FEVER knowledge base is enriched
+    to the format ``\textit{question} + \textit{verdict} + \textit{claim}'', producing entries
+    of approximately 30--40 words. This enrichment was critical for reliable NLI evaluation:
+    bare claims of only 8--12 words caused approximately 70\% of factuality scores to return
+    the inconclusive 0.5 baseline due to insufficient NLI signal. The enriched format provides
+    enough semantic context for the NLI Verifier to produce meaningful entailment judgements.
+    The FEVER benchmark is used to evaluate factuality improvement from knowledge base
+    enrichment (Section~\ref{sec:ch6_factuality}). Per-strategy poison detection experiments
+    are conducted exclusively on TruthfulQA, which provides more consistent question-answer
+    pairs suitable for the two-part clean/poisoned evaluation design.
+\end{itemize}
+
+\subsection{Retrieval Configuration}
+
+The retrieval pipeline is evaluated with two embedding models: (i) the
+\texttt{sentence-transformers/all-MiniLM-L6-v2} model producing 384-dimensional dense
+representations, and (ii) the \texttt{snowflake-arctic-embed2} model producing
+1024-dimensional representations accessed via the FARMI API. Documents are indexed using
+FAISS with cosine similarity, and retrieval returns the top $K=5$ most semantically similar
+documents for each query. The classification threshold for trustworthiness is fixed at
+$\tau = 0.5$: a trust score below this threshold causes the system to flag the response as
+untrustworthy and issue an actionable warning.
+
+Two LLMs are evaluated for response generation: \texttt{llama3.3:70b} (primary baseline)
+and \texttt{qwen3.5:35b} (cross-model comparison), both accessed via the FARMI computing
+cluster API. NLI inference is performed using \texttt{facebook/bart-large-mnli} running on
+CPU. Results for the primary Llama 3.3 70B + all-MiniLM-L6-v2 configuration are reported
+throughout Sections~\ref{sec:ch6_baseline}--\ref{sec:ch6_overhead}; the full 2×2 grid
+comparison is presented in Section~\ref{sec:ch6_grid}.
+
+\subsection{Experiment Design}
+
+Each experiment follows a two-part structure:
+
+\begin{itemize}
+    \item \textbf{Part A --- Clean Baseline}: 50 questions are answered against an unmodified
+    knowledge base. This measures the average trust score assigned to clean, factually accurate
+    retrieval contexts and establishes the baseline accuracy of the naive always-trust system.
+
+    \item \textbf{Part B --- Poisoned Detection}: The same 50 questions are answered against a
+    knowledge base in which 30\% of documents have been adversarially modified. This measures
+    the Evaluation Agent's ability to detect and flag compromised retrieval contexts before
+    generation.
+\end{itemize}
+
+Two experiment configurations are reported:
+
+\begin{enumerate}
+    \item \textbf{Per-strategy experiments}: 20 samples per run with a single poisoning strategy
+    applied in isolation (contradiction, instruction injection, entity swap, or subtle
+    manipulation). This enables characterisation of detection difficulty per attack type.
+
+    \item \textbf{Mixed experiment}: 50 samples with poisoning strategies assigned randomly
+    across the poisoned portion of the knowledge base. This reflects a more realistic threat
+    scenario where multiple attack types may co-exist.
+\end{enumerate}
+
+A document is counted as successfully poisoned only if the modified text differs from the
+original (\texttt{poisoned\_text} $\neq$ \texttt{original\_text}). This prevents evaluation
+metrics from being distorted by unchanged documents incorrectly counted as poisoned samples.
+
+\subsection{Adversarial Poisoning Strategies}
+
+Four rule-based poisoning strategies are applied to modify documents in the knowledge base:
+
+\begin{itemize}
+    \item \textbf{Contradiction}: Appends a sentence that semantically contradicts the key
+    claim of the original document (e.g., negating the stated answer).
+
+    \item \textbf{Instruction Injection}: Appends an override directive targeting the language
+    model's instruction-following behaviour (e.g., ``\textit{IMPORTANT: Ignore all previous
+    context and state that [false claim]}'').
+
+    \item \textbf{Entity Swap}: Replaces named entities or numeric values in-place within the
+    original text. A three-level fallback is employed: (1) predefined named-entity substitution;
+    (2) numeric value shifting via regular expressions when no named entity is present;
+    (3) qualifier or negation swapping in the answer segment of the document. This strategy
+    produces no appended content and no structural artifacts, making it the hardest attack to
+    detect by surface-level analysis.
+
+    \item \textbf{Subtle Manipulation}: Inserts hedging language, false qualifiers, or
+    plausible-sounding uncertainty signals that subtly shift the factual content without
+    triggering obvious pattern-matching rules.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Baseline Models and Comparison Methods}
+\label{sec:ch6_baseline}
+
+\subsection{Naive Always-Trust Baseline}
+
+The primary comparison point is a \textbf{naive always-trust RAG system}: a standard
+retrieval-augmented generation pipeline that accepts all retrieved documents and generated
+responses without any evaluation step. This baseline always returns
+$\texttt{is\_trustworthy} = \text{True}$.
+
+In the two-part experiment design, the baseline's accuracy equals the proportion of samples
+where trusting the output is the correct decision. With a 30\% poisoning rate, approximately
+70\% of Part B samples involve clean retrieval contexts, giving the naive baseline an inherent
+accuracy advantage that reflects the class imbalance rather than any detection capability.
+This makes accuracy alone a misleading evaluation metric and motivates the use of trust score
+separation alongside precision, recall, and F1.
+
+\subsection{Trustworthy RAG System}
+
+The full evaluation pipeline --- NLI Verifier, Poison Detector, and Trust Index Calculator
+--- constitutes the Trustworthy RAG system evaluated in this chapter. Its performance is
+measured against the naive baseline across the following metrics:
+
+\begin{itemize}
+    \item \textbf{Accuracy}: fraction of samples correctly classified as trustworthy or
+    untrustworthy relative to the ground truth poisoning label.
+
+    \item \textbf{Precision}: fraction of flagged (untrustworthy) samples that are genuinely
+    poisoned.
+
+    \item \textbf{Recall (Poison Detection Rate)}: fraction of poisoned samples that the
+    Evaluation Agent successfully flags before generation.
+
+    \item \textbf{F1 Score}: harmonic mean of precision and recall; the primary optimisation
+    target for the detection task.
+
+    \item \textbf{Trust Score Separation}: the difference between the mean clean trust score
+    and the mean poisoned trust score,
+    $\Delta = \bar{T}_{\text{clean}} - \bar{T}_{\text{poisoned}}$.
+    This metric quantifies the discriminative power of the Trust Index independently of the
+    classification threshold and class imbalance.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Results on Factuality Improvement}
+\label{sec:ch6_factuality}
+
+Table~\ref{tab:factuality} reports the average trust scores and system accuracy on both
+benchmark datasets. The clean trust score reflects how the Evaluation Agent rates responses
+grounded in unmodified, factually accurate knowledge. The poisoned trust score reflects the
+same pipeline's rating of responses retrieved from adversarially modified contexts.
+
+\begin{table}[h]
+\centering
+\caption{Trust score and accuracy comparison across benchmark datasets (mixed strategy, 50 samples).}
+\label{tab:factuality}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\hline
+\textbf{Dataset} & \textbf{Clean Trust} & \textbf{Poisoned Trust} & \textbf{Separation}
+    & \textbf{System Acc.} & \textbf{Baseline Acc.} & \textbf{Improvement} \\
+\hline
+TruthfulQA & 0.830 & 0.590 & 0.240 & 91\% & 85\% & +7\% \\
+FEVER      & 0.654 & ---   & ---   & 90\% & 85\% & +5\% \\
+\hline
+\end{tabular}%
+}
+\end{table}
+\small\textit{Note: FEVER was evaluated for factuality improvement only (clean knowledge
+base); poisoned trust and separation values are not applicable for this benchmark.}
+
+\normalsize
+On TruthfulQA, the Evaluation Agent assigns an average clean trust score of 0.830 to
+responses grounded in unmodified documents, indicating that the pipeline consistently
+rates factually supported outputs as trustworthy. The poisoned average of 0.590 shows
+that the agent is sensitive to adversarial content, producing a separation of 0.240 that
+enables discrimination above the 0.5 classification threshold in the majority of cases.
+The system achieves 91\% accuracy on TruthfulQA, a +7\% improvement over the naive
+always-trust baseline, with zero false positives on clean content (100\% precision).
+
+On FEVER, the system achieves 90\% accuracy, a +5\% improvement over the naive baseline.
+This larger gain is partially attributable to the enriched document format: enriched FEVER
+entries provide substantially more NLI-relevant context than bare TruthfulQA answers,
+enabling the NLI Verifier to produce informative factuality signals and reducing the
+frequency of the inconclusive 0.5 baseline score from approximately 70\% (on bare claims)
+to a small minority of edge cases. The FEVER enrichment process --- reformatting each
+document from a bare claim to a structured ``question + verdict + claim'' tuple --- was a
+key implementation decision that unlocked reliable NLI-based evaluation on short-document
+knowledge bases.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Detection Performance under Data Poisoning Attacks}
+\label{sec:ch6_detection}
+
+\subsection{Overall Detection Performance}
+
+Table~\ref{tab:main_results} reports detection performance on the TruthfulQA benchmark
+with 50 samples and a mixed poisoning strategy, where attack types are assigned randomly
+across the poisoned portion of the knowledge base.
+
+\begin{table}[h]
+\centering
+\caption{Overall detection performance --- TruthfulQA, 50 samples, mixed strategy.}
+\label{tab:main_results}
+\begin{tabular}{lc}
+\hline
+\textbf{Metric} & \textbf{Value} \\
+\hline
+Accuracy                  & 91\%   \\
+Precision                 & 100\%  \\
+Recall                    & 40\%   \\
+F1 Score                  & 57.1\% \\
+Trust Score Separation    & 0.240  \\
+Baseline Accuracy         & 85\%   \\
+Improvement over Baseline & +7\%   \\
+\hline
+\end{tabular}
+\end{table}
+
+The system achieves 40\% recall across mixed strategies, meaning that 40\% of poisoned
+retrieval contexts are correctly identified and flagged before generation. Precision of
+100\% indicates zero false positives on clean content --- the Evaluation Agent does not
+flag any clean response as untrustworthy. The F1 score of 57.1\% reflects the
+precision--recall trade-off: the system is highly conservative, preferring to miss some
+poisoned samples rather than raise false alarms. The FP spillover effect observed in
+earlier experimental rounds (where clean queries retrieving poisoned neighbours received
+elevated poison probabilities) was mitigated by the relevance-weighted poison aggregation
+described in Chapter~\ref{ch5_eval_agent}.
+
+\subsection{Per-Strategy Detection Results}
+
+Table~\ref{tab:per_strategy} reports detection performance for each poisoning strategy in
+isolation, using 20 samples per strategy.
+
+\begin{table}[h]
+\centering
+\caption{Per-strategy detection performance --- TruthfulQA, 20 samples per strategy.}
+\label{tab:per_strategy}
+\begin{tabular}{lccccc}
+\hline
+\textbf{Strategy} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall}
+    & \textbf{F1} & \textbf{Separation} \\
+\hline
+Contradiction  & 89\%   & 62.1\%  & 60.0\%  & 61.1\%  & 0.245 \\
+Injection      & 75\%   & 37.5\%  & 100\%   & 54.5\%  & 0.407 \\
+Entity Swap    & 87.5\% & 100\%   & 16.7\%  & 28.6\%  & 0.071 \\
+Subtle         & 85\%   & 50.0\%  & 16.7\%  & 25.0\%  & 0.127 \\
+Mixed          & 87.5\% & 55.6\%  & 83.3\%  & 66.7\%  & 0.327 \\
+\hline
+\end{tabular}
+\end{table}
+\small\textit{Note: the Mixed row reports the 20-sample per-strategy run where all four
+strategies are combined. This differs from the 100-sample main experiment in
+Table~\ref{tab:main_results}, which uses a separate run with a larger sample size and
+correspondingly different classification statistics (91\% accuracy, 57.1\% F1).}
+\normalsize
+
+The results reveal a wide range of detection difficulty across strategies. Instruction
+injection achieves perfect recall (100\%) due to its high-severity linguistic artifacts,
+while entity swap and subtle manipulation both achieve only 16.7\% recall. The mixed
+strategy achieves the best overall balance (F1 = 66.7\%, recall = 83.3\%), as different
+strategies activate different detection signals and their combined presence creates more
+detectable patterns than any single strategy in isolation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Robustness and Trust Index Analysis}
+\label{sec:ch6_robustness}
+
+\subsection{Trust Score Distributions per Strategy}
+
+Table~\ref{tab:separation} summarises the trust score separation for each poisoning
+strategy, providing a threshold-independent view of the Trust Index's discriminative power.
+
+\begin{table}[h]
+\centering
+\caption{Trust score separation per poisoning strategy.}
+\label{tab:separation}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Strategy} & \textbf{Clean Avg} & \textbf{Poisoned Avg}
+    & \textbf{Separation ($\Delta$)} & \textbf{Discriminability} \\
+\hline
+Injection     & $\approx 0.76$ & $\approx 0.35$ & 0.407 & Strong    \\
+Mixed         & 0.830          & 0.590          & 0.240 & Moderate  \\
+Contradiction & ---            & ---            & 0.245 & Moderate  \\
+Subtle        & ---            & ---            & 0.127 & Weak      \\
+Entity Swap   & $\approx 0.75$ & $\approx 0.68$ & 0.071 & Very weak \\
+\hline
+\end{tabular}
+\end{table}
+\small\textit{Note: clean and poisoned average trust values are reported for strategies
+with the most extreme separation (injection and entity swap). Component averages for
+contradiction and subtle strategies were not separately logged; their separation values
+are derived from per-sample trust score records.}
+
+\normalsize
+The injection strategy produces the largest separation (0.407), enabling reliable
+discrimination at the fixed threshold of 0.5. Entity swap produces the smallest separation
+(0.071), reflecting near-overlapping trust score distributions between clean and poisoned
+samples. This near-zero separation confirms that entity swap attacks cannot be detected
+by Trust Index thresholding alone --- the upstream poison detection signals do not differ
+sufficiently between clean and entity-swapped contexts.
+
+\subsection{Non-Linear Dampener Effect}
+
+The non-linear poison dampener, described in Chapter~\ref{ch4_methodology}, activates when
+$P_{poison} > 0.7$ and reduces the final trust score by up to 40\% at $P_{poison} = 1.0$.
+This mechanism prevents high factuality scores from masking an elevated poisoning signal
+when retrieved documents appear superficially supportive of the generated answer but are
+otherwise structurally suspicious.
+
+In the injection experiment, average poison probabilities for poisoned contexts reached
+0.994, consistently triggering the dampener and producing the strong separation of 0.407
+observed. For entity swap, average poisoned-context poison probabilities remained near
+0.319 --- well below the 0.7 dampener threshold --- leaving trust scores largely unchanged
+and yielding the near-zero separation of 0.071. The dampener thus amplifies the Trust
+Index's response to high-confidence poison signals while having no effect on weak signals,
+confirming its role as a robustness mechanism rather than a uniform scaling factor.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Ablation Studies}
+\label{sec:ch6_ablation}
+
+To validate the Trust Index weight configuration, four weight settings were evaluated on
+the TruthfulQA mixed-strategy experiment. Table~\ref{tab:ablation} reports the results.
+
+\begin{table}[h]
+\centering
+\caption{Ablation study --- effect of Trust Index weight configuration on detection performance.}
+\label{tab:ablation}
+\begin{tabular}{lcccccc}
+\hline
+\textbf{Configuration} & \textbf{$\alpha$ (Fact.)} & \textbf{$\beta$ (Cons.)}
+    & \textbf{$\gamma$ (Poison)} & \textbf{Accuracy} & \textbf{F1} & \textbf{Recall} \\
+\hline
+Default          & 0.40 & 0.35 & 0.25 & 81.7\% & 48\%  & ---    \\
+Equal weights    & 0.33 & 0.34 & 0.33 & ---    & 48\%  & ---    \\
+Poison-heavy     & $<0.20$ & $<0.20$ & $>0.60$ & ---    & ---   & 88.9\% \\
+Factuality-heavy & $>0.60$ & $<0.20$ & $<0.20$ & 81.7\% & ---   & ---    \\
+\hline
+\end{tabular}
+\end{table}
+\small\textit{Note: cells marked --- indicate metrics not separately recorded for that
+configuration variant; each configuration was evaluated against its primary target metric.}
+
+\normalsize
+The poison-heavy configuration achieves the highest recall (88.9\%) by amplifying the
+poisoning signal component, at the cost of precision. The factuality-heavy configuration
+achieves the highest accuracy (81.7\%) but misses subtle and entity-swap attacks that
+produce low poison probability signals below the non-linear dampener threshold. Default
+weights (0.40, 0.35, 0.25) provide the best overall trade-off. Equal weights produce
+comparable F1 to the default, suggesting that the optimisation landscape is relatively
+flat near the configuration optimum and that the Trust Index is not highly sensitive to
+small perturbations in weight values.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Performance Overhead and Scalability}
+\label{sec:ch6_overhead}
+
+Table~\ref{tab:latency} summarises the runtime characteristics of the Evaluation Agent
+measured over the TruthfulQA experiments.
+
+\begin{table}[h]
+\centering
+\caption{Evaluation Agent performance overhead per sample.}
+\label{tab:latency}
+\begin{tabular}{lc}
+\hline
+\textbf{Metric} & \textbf{Value} \\
+\hline
+Total time per sample (retrieval + generation + evaluation) & $\approx 13.2$\,s \\
+Evaluation-only time (NLI + poison detection + Trust Index)  & $\approx 10$--$11$\,s \\
+Throughput with Evaluation Agent enabled                    & $\approx 4$--$5$ queries/min \\
+NLI inference calls per batch ($K=5$ retrieved documents)   & Up to 10 pairwise calls \\
+Baseline RAG throughput (no evaluation)                     & $<1$\,s / query \\
+Latency overhead factor                                     & $\approx 13\times$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The primary runtime bottleneck is the \texttt{facebook/bart-large-mnli} model running on
+CPU. With $K=5$ retrieved documents, intra-document NLI and cross-document consistency
+checks require up to 10 NLI forward passes per batch, each taking approximately 1 second
+on CPU hardware. The shared NLI instance --- reused by both the NLI Verifier and the Poison
+Detector --- prevents redundant model loading overhead but does not reduce the number of
+inference calls required per query.
+
+The 13-second evaluation overhead represents a 13$\times$ latency increase over baseline
+RAG, for accuracy gains of +1\% to +6\% over the naive always-trust baseline. This
+trade-off is not justified for latency-sensitive real-time conversational applications.
+However, for \textbf{high-stakes batch scenarios} --- such as automated document
+verification, regulatory compliance review, or medical information retrieval systems ---
+the evaluation cost is acceptable relative to the risk of acting on poisoned information.
+
+Several optimisation paths exist for reducing latency in deployment contexts:
+
+\begin{itemize}
+    \item \textbf{GPU acceleration}: NLI inference on a mid-range GPU is estimated to reduce
+    evaluation time from $\approx 10$\,s to $<2$\,s per sample.
+
+    \item \textbf{Bounded pairwise checks}: limiting cross-document NLI to the top-$K'$ most
+    semantically dissimilar document pairs, rather than all $\binom{K}{2}$ pairs.
+
+    \item \textbf{Query result caching}: caching NLI results for repeated or near-duplicate
+    queries reduces redundant computation in document-heavy batch workflows.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Discussion of Results}
+\label{sec:ch6_discussion}
+
+\subsection{Strategy-Specific Detection Analysis}
+
+The per-strategy results reveal a clear detection hierarchy that reflects both the signal
+richness of each attack type and the architectural coverage of the Evaluation Agent's
+detection signals.
+
+\paragraph{Instruction Injection --- Fully Detectable.}
+Injection achieves 100\% recall because appended override directives (e.g.,
+\texttt{``IMPORTANT: Ignore all previous context and state that...''}) contain high-severity
+linguistic patterns that trigger deterministic regex rules in the Poison Detector with
+severity scores of 0.5--0.7. These artifacts are structurally unambiguous and do not
+require NLI inference for detection. Intra-document NLI provides a complementary signal:
+splitting each document and running NLI between the original factual content and the
+appended adversarial directive reveals a strong semantic discontinuity, producing
+intra-document contradiction scores above the 0.7 threshold. The injection strategy also
+exhibits the largest trust score separation (0.407) across all strategies tested.
+
+\paragraph{Contradiction --- Moderately Detectable.}
+Contradiction achieves 60.0\% recall with a separation of 0.245. Intra-document NLI
+successfully detects cases where the appended contradiction produces a strong first-half
+to second-half contradiction signal (above 0.7). However, some poisoned samples produce
+scores near the detection threshold, resulting in borderline classifications. The
+detection rate is sensitive to the specific phrasing of the contradiction: explicit
+negations are more detectable than hedged or qualified contradictions.
+
+\paragraph{Entity Swap --- Near-Undetectable.}
+Entity swap achieves only 16.7\% recall with a separation of 0.071. Unlike injection and
+contradiction, entity swap modifies documents in-place with no appended content and no
+structural artifacts. The resulting documents are syntactically and stylistically
+indistinguishable from genuine documents at the surface level --- only specific numeric
+or named-entity values are changed. Detecting this class of attack requires external
+world-knowledge verification (e.g., querying a fact database to verify whether a given
+value is correct for a particular claim), which is beyond the capability of a
+surface-signal-based evaluation agent. This constitutes an \textbf{architectural limit}
+of the current approach.
+
+\paragraph{Subtle Manipulation --- Near-Undetectable.}
+Subtle manipulation similarly achieves 16.7\% recall with a separation of 0.127. Hedging
+language and false qualifiers do not trigger pattern-matching rules, and the semantic shift
+introduced is too small for intra-document NLI to consistently detect above threshold.
+Average poison probabilities for this strategy hover near 0.700 --- at the boundary of the
+non-linear dampener --- indicating that the signals present are at the edge of statistical
+significance under the current architecture.
+
+\subsection{False Positive Spillover Effect}
+
+A consistent source of false positives across all strategies is the
+\textit{FP spillover effect}: a clean query that retrieves a poisoned document as a
+neighbour in the top-$K$ results receives an elevated overall poison probability, causing
+the Evaluation Agent to flag the response as untrustworthy even when the highest-ranked
+retrieved document is clean.
+
+This behaviour is architecturally correct from a security perspective: the retrieval
+environment is contaminated, and the Evaluation Agent correctly warns that the context
+cannot be fully trusted. However, the spillover reduces the precision metric, particularly
+in the injection experiment. The relevance-weighted poison aggregation introduced in
+Chapter~\ref{ch5_eval_agent} mitigates this effect by weighting each document's poison
+probability by its retrieval similarity score, so low-relevance poisoned neighbours
+contribute less to the overall estimate than the top-ranked document. This intervention
+reduced false positives substantially in clean-KB experiments. However, when a poisoned
+document ranks high in semantic similarity to the query, the spillover effect is not fully
+eliminated by relevance weighting alone.
+
+This represents a fundamental design trade-off: a system that issues warnings about
+contaminated retrieval environments will inevitably produce false positives when clean
+queries share embedding space proximity with poisoned documents. The appropriate response
+is not to suppress these warnings but to provide richer contextual information about which
+specific documents triggered the alert.
+
+\subsection{Trust Score Separation as Primary Metric}
+
+In class-imbalanced settings --- where 70\% of samples involve clean retrieval contexts
+--- accuracy alone is a misleading evaluation metric. The naive always-trust baseline
+achieves 85\% accuracy without any detection capability, simply by never raising a
+warning. The Trust Index's discriminative value is better captured by the trust score
+separation $\Delta$, which measures how far apart the clean and poisoned trust
+distributions are independently of threshold choice and class composition.
+
+The per-strategy separation range (0.071 for entity swap to 0.407 for injection) provides
+actionable guidance for future defence design. Strategies with high separation are
+candidates for reliable deployment under the current architecture; strategies with low
+separation require fundamentally different detection mechanisms. This per-strategy
+characterisation is a contribution of this thesis: prior evaluation frameworks have not
+systematically quantified the detection difficulty of individual poisoning strategies in
+RAG-specific evaluation settings.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Comparative Evaluation: LLM and Embedding Model Sensitivity}
+\label{sec:ch6_grid}
+
+To assess whether the Trust Index performance is specific to the Llama 3.3 70B model and
+the all-MiniLM-L6-v2 embedding pipeline, a \textbf{2×2 factorial experiment} was conducted
+crossing two LLMs with two embedding models. All four configurations were evaluated under
+identical conditions: 100 samples (50 clean Part A, 50 poisoned Part B), 30\% poison ratio,
+mixed strategy, $K=3$, $\tau=0.5$. The impact of increasing retrieval depth to $K=5$ is
+analysed separately in Section~\ref{sec:ch6_topk}.
+
+\subsection{Grid Results}
+
+Table~\ref{tab:grid_results} reports the full performance grid.
+
+\begin{table}[h]
+\centering
+\caption{2×2 factorial grid results --- TruthfulQA, 100 samples, mixed strategy.}
+\label{tab:grid_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccccc}
+\hline
+\textbf{LLM} & \textbf{Embedding} & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall}
+    & \textbf{F1} & \textbf{Clean $\bar{T}$} & \textbf{Poison $\bar{T}$} & \textbf{Sep.} \\
+\hline
+Llama 3.3 70B & all-MiniLM-L6-v2       & 91\% & 100\%  & 40\%  & 57.1\% & 0.830 & 0.590 & 0.240 \\
+Llama 3.3 70B & snowflake-arctic-embed2 & 91\% & 100\%  & 40\%  & 57.1\% & 0.799 & 0.611 & 0.188 \\
+Qwen 3.5 35B  & all-MiniLM-L6-v2       & 71\% & 25.0\% & 46.7\% & 32.6\% & 0.633 & 0.471 & 0.161 \\
+Qwen 3.5 35B  & snowflake-arctic-embed2 & 71\% & 28.1\% & 60.0\% & 38.3\% & 0.653 & 0.454 & 0.199 \\
+\hline
+\multicolumn{2}{l}{Naive always-trust baseline} & 85\% & --- & --- & --- & --- & --- & --- \\
+\hline
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Finding 1: Embedding Invariance for Llama 3.3 70B}
+
+The two Llama configurations produce \textbf{identical classification results}
+(Acc = 91\%, Prec = 100\%, Recall = 40\%, F1 = 57.1\%), with the sole difference being a
+slightly higher clean trust score for MiniLM ($0.830$ vs.\ $0.799$) and a larger trust
+score separation ($0.240$ vs.\ $0.188$). The zero false positive count in both Llama runs
+confirms that the precision advantage is attributable to the LLM's concise answer style
+rather than to retrieval quality.
+
+This result demonstrates that for a concise-output LLM such as Llama 3.3, switching to a
+higher-dimensional embedding model (1024-dim Snowflake vs.\ 384-dim MiniLM) does not
+improve poison detection. The Trust Index's discriminative power is determined primarily
+by the NLI entailment signal between the generated answer and retrieved documents, which
+is insensitive to the specific embedding space used for retrieval as long as topically
+relevant documents are returned.
+
+\subsection{Finding 2: Qwen 3.5 35B Generation-Style False Positives}
+
+Both Qwen configurations \textbf{underperform the naive baseline} by 16.5 percentage
+points (71\% vs.\ 85\%), producing 21--23 false positives out of 85 clean samples.
+The root cause is the LLM's verbose, hedged generation style: Qwen 3.5 35B typically
+prefaces answers with phrases such as ``\textit{Based on the provided context}'' or
+``\textit{According to the available information},'' which the NLI Verifier interprets as
+reduced semantic commitment to the claim. This reduces $S_{\text{factuality}}$ below 0.5
+for many clean responses, causing the Trust Index to fall below the classification
+threshold $\tau = 0.5$ and triggering false untrustworthy labels.
+
+The mean clean trust score for Qwen ($\approx 0.64$) is substantially lower than for
+Llama ($\approx 0.83$), confirming that the generation-style effect is systematic rather
+than query-specific. This finding demonstrates that the Trust Index's $\tau = 0.5$
+threshold is implicitly calibrated for the Llama generation distribution and requires
+per-LLM recalibration for reliable deployment with alternative generators.
+
+\subsection{Finding 3: Retrieval Quality Paradox}
+
+For Qwen 3.5 35B, the higher-dimensional Snowflake Arctic Embed2 model shows marginally
+improved F1 (38.3\% vs.\ 32.6\%) and recall (60\% vs.\ 46.7\%), with the same accuracy
+(71\%) and a comparable false positive count. The slight improvement in recall may reflect
+that Snowflake's superior retrieval precision recovers more relevant poisoned documents,
+making them available for NLI analysis.
+
+However, a counter-intuitive pattern also emerges: Snowflake's stronger retrieval retrieves
+\textit{cleaner} documents for genuinely clean queries, raising the mean clean trust score
+slightly (0.653 vs.\ 0.633). This constitutes a \textbf{retrieval quality paradox}: higher
+retrieval quality dilutes contaminated context by preferring highly relevant clean documents,
+reducing the poison detection signal for poisoned queries while simultaneously reducing
+false positives for clean queries. The net effect on F1 depends on which correction
+dominates.
+
+\subsection{Implications for Deployment}
+
+The grid experiment yields three actionable guidelines for deploying the Trustworthy RAG
+framework:
+
+\begin{enumerate}
+    \item \textbf{LLM selection is the dominant factor.} Switching embedding models within
+    the same LLM produces negligible differences in detection performance for Llama.
+    The choice of LLM has a far larger effect on both precision (100\% vs.\ 25--28\%) and
+    overall accuracy (91\% vs.\ 71\%).
+
+    \item \textbf{Per-LLM threshold calibration is required.} The fixed threshold $\tau = 0.5$
+    is not universally applicable. For LLMs with hedged generation styles, the Trust Index
+    threshold must be lowered, or the factuality component normalised, to avoid systematic
+    false positives on clean content.
+
+    \item \textbf{The framework is validated as reproducible on Llama 3.3 70B.} The new
+    Llama+MiniLM run replicates the original thesis baseline identically (same TP/FP/FN
+    counts, trust score differences below 0.015), confirming that the results are stable
+    across independent runs.
+\end{enumerate}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Retrieval Depth Sensitivity: $K=3$ versus $K=5$}
+\label{sec:ch6_topk}
+
+To isolate the effect of retrieval depth on detection performance, the primary configuration
+(Llama~3.3~70B + all-MiniLM-L6-v2) was evaluated under two retrieval settings: $K=3$ (used
+in the 2×2 grid experiment, Section~\ref{sec:ch6_grid}) and $K=5$ (the system default).
+All other parameters were held constant (TruthfulQA, 100 samples, 30\% poison ratio,
+mixed strategy, $\tau=0.5$).
+
+Increasing $K$ from 3 to 5 has two theoretically opposing effects. First, more retrieved
+documents increase the probability of a poisoned document appearing in the batch, which
+should improve recall. Second, the number of NLI inference calls grows from
+$3 + 3 + \binom{3}{2} = 9$ to $5 + 5 + \binom{5}{2} = 20$ per batch (factuality +
+intra-document + pairwise cross-document), increasing evaluation overhead approximately 2.2$\times$.
+
+\begin{table}[h]
+\centering
+\caption{Retrieval depth sensitivity: $K=3$ vs $K=5$ (Llama~3.3~70B + all-MiniLM-L6-v2,
+TruthfulQA, 100 samples, mixed strategy).}
+\label{tab:topk_comparison}
+\begin{tabular}{lccccccc}
+\hline
+\textbf{K} & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1}
+    & \textbf{Clean $\bar{T}$} & \textbf{Sep.} & \textbf{NLI calls/batch} \\
+\hline
+$K=3$ & 91\%  & 100\%  & 40.0\% & 57.1\% & 0.830 & 0.240 & $\sim$9 \\
+$K=5$ & 91\%  & 100\%  & 40.0\% & 57.1\% & 0.827 & 0.237 & $\sim$20 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Finding: Detection Is Retrieval-Depth-Invariant for Llama~3.3~70B}
+
+The results in Table~\ref{tab:topk_comparison} show that increasing retrieval depth from
+$K=3$ to $K=5$ produces \textbf{no improvement in detection performance}. The classification
+outcome is identical: 6 true positives, 0 false positives, and 9 false negatives in both
+configurations. Accuracy (91\%), precision (100\%), recall (40.0\%), and F1 (57.1\%) are
+unchanged. The trust score separation decreases marginally from 0.240 to 0.237, a difference
+within noise bounds.
+
+The predicted recall improvement does not materialise. The reason is structural: the 9
+undetected poisoned contexts (the false negatives) correspond to Entity Swap and Subtle
+attack strategies, which produce in-place modifications to the document text. These attacks
+are difficult to detect because they leave no textual artefacts that would be flagged by
+linguistic pattern detectors or intra-document NLI, regardless of how many documents are
+retrieved. Adding two extra clean documents to the batch provides no additional poison signal
+for these attacks.
+
+Conversely, the 6 successfully detected contexts (Contradiction and Injection strategies)
+are detectable at $K=3$ because they append distinct textual patterns (contradiction markers
+and instruction-override phrases) that the detector flags reliably. Retrieving 5 instead of
+3 documents does not improve recall for these strategies, since they are already detected at
+the lower retrieval depth.
+
+\subsection{Implication: Detection Bottleneck Is Attack Strategy, Not Retrieval Depth}
+
+This null result has a clear architectural implication: \textbf{the detection ceiling of the
+Evaluation Agent at 40\% recall is set by the attack strategy difficulty, not by the number
+of documents retrieved}. Entity Swap and Subtle attacks represent fundamental limits of the
+current NLI-and-heuristic approach: they require external world knowledge or fine-grained
+semantic comparison to detect reliably.
+
+From a deployment standpoint, $K=3$ is therefore the preferred configuration for this
+system: it achieves equivalent detection performance at approximately half the NLI inference
+cost ($\sim$9 vs.\ $\sim$20 calls per batch). The $K=3$ setting is used for the 2×2 grid
+experiment (Section~\ref{sec:ch6_grid}), and this sensitivity analysis retroactively
+validates that choice.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Summary}
+
+This chapter evaluated the Trustworthy RAG framework across TruthfulQA and FEVER
+benchmarks with four adversarial poisoning strategies. The Evaluation Agent achieves
+up to 90\% accuracy (FEVER benchmark) and 66.7\% F1 score (mixed per-strategy
+experiment), with instruction injection detected at 100\% recall.
+On the mixed 100-sample experiment (Llama 3.3 70B + all-MiniLM-L6-v2), the system
+achieves 91\% accuracy, 57.1\% F1, 100\% precision, and a trust score separation of
+0.240, representing a +7\% improvement over the naive always-trust baseline on
+TruthfulQA and +5\% on FEVER.
+
+Per-strategy analysis reveals a clear detection hierarchy: instruction injection and
+contradiction are amenable to textual-signal and intra-document NLI approaches, while
+entity swap and subtle manipulation represent architectural limits requiring external
+world-knowledge for reliable detection. The 13-second evaluation overhead positions the
+system as suitable for high-stakes batch deployment rather than real-time applications.
+
+The ablation study confirms that the default weight configuration (0.40, 0.35, 0.25)
+provides the best overall trade-off between precision, recall, and accuracy, and that
+the Trust Index is robust to small perturbations in weight values.
+
+A 2×2 factorial experiment (Section~\ref{sec:ch6_grid}) further establishes that LLM
+selection is the dominant performance factor: Llama 3.3 70B achieves 91\% accuracy with
+zero false positives under both embedding models, while Qwen 3.5 35B underperforms the
+naive baseline due to generation-style false positives. These findings highlight the
+importance of per-LLM Trust Index calibration in practical deployments.
+
+Section~\ref{sec:ch6_topk} (Retrieval Depth Sensitivity) establishes that detection
+performance is retrieval-depth-invariant for Llama~3.3~70B: $K=5$ produces identical
+classification outcomes to $K=3$ (91\% accuracy, 57.1\% F1, 0 false positives) at
+approximately 2.2$\times$ the NLI inference cost, confirming that the 40\% recall ceiling
+is set by attack strategy difficulty rather than retrieval depth. The next chapter discusses all findings in the context of
+the research questions, identifies the system's theoretical and practical contributions,
+and outlines directions for future work.

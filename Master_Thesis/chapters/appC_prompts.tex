@@ -1,0 +1,28 @@
+\chapter{LLM Prompt Templates}
+\label{app:prompts}
+
+This appendix lists the prompt templates used in the RAG pipeline for response generation and the system prompt governing the LLM's behaviour.
+
+\section{RAG Generation Prompt}
+
+The following template is used by the generator to produce responses from retrieved context. The placeholders \texttt{\{context\}} and \texttt{\{question\}} are filled at runtime by the pipeline orchestrator.
+
+\begin{verbatim}
+You are a helpful assistant. Answer the question based ONLY on the
+provided context. If the context does not contain enough information
+to answer the question, say "I don't have enough information to
+answer this question."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:
+\end{verbatim}
+
+\section{Design Rationale}
+
+The prompt is intentionally minimal and instruction-focused. The phrase ``based ONLY on the provided context'' is included to maximise the LLM's reliance on retrieved documents (promoting faithfulness) and to reduce parametric knowledge injection (which would undermine the retrieval-grounded evaluation). The explicit fallback instruction (``I don't have enough information...'') prevents the model from hallucinating answers when retrieved context is insufficient, which would otherwise produce low NLI entailment scores and artificially depressed Trust Index values.
+
+No chain-of-thought or few-shot examples are included, consistent with the evaluation design principle that the generation step should reflect a standard, unaugmented RAG deployment rather than a reasoning-enhanced configuration.

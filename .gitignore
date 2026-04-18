@@ -126,25 +126,22 @@ Thumbs.db
 secrets.yaml
 
 # Personal/sensitive files
-Llama detail.txt
 test_Fami.py
-Main Research Question.docx
-Master_Thesis.pdf
-Supervisor_Plan.pdf
-SUPERVISOR_REQUEST_TEMPLATE.md
-
-# Personal documentation (not part of thesis)
-PROJECT_DOCUMENTATION.md
-generate_doc.py
 Project_Documentation.docx
 Project_Documentation.pdf
 
-# Experiment data (can be large)
-data/experiments/
+# Meeting notes (personal)
+Meeting_Agenda_5March2026.docx
+Meeting_Cheat_Sheet.docx
+Meeting_Cheat_Sheet_backup.docx
+Meeting_Cheat_Sheet_v2.docx
+Meeting_Cheat_Sheet_v2.pdf
+Thesis_Summary_PhD_Application.docx
+Thesis_Summary_PhD_Application.md
+_ul
 
 # Claude AI
 .claude/
-CLAUDE.md
 
 # Empty placeholder directories
 experiments/baselines/
@@ -154,9 +151,3 @@ notebooks/
 
 # Windows artifacts
 nul
-
-# Thesis files (local only)
-Master_Thesis/
-Master_Thesis.zip
-GITHUB_SETUP.md
-HOW_IT_WORKS.md

@@ -1,0 +1,103 @@
+% \chapter{Literature Review}
+% \label{ch3_literature_review}
+% \section{RAG System Components and Architectures}
+% % Indexing, retrieval, reranking, generation, orchestration.
+
+% \section{Fact-Checking and Factual Consistency Models}
+% % FEVER, FactCC, FActScore, TruthfulQA, etc.
+
+% \section{Detection of Adversarial Attacks and Data Poisoning in NLP Pipelines}
+% % Poisoning taxonomy, trigger-based attacks, label flipping, etc.
+
+% \section{Evaluation and Explainability Techniques for Trustworthy AI}
+% % XAI, calibration, uncertainty estimation, etc.
+
+% \section{Comparative Analysis of Existing Fact-Verification Pipelines}
+% % Compare methods, datasets, metrics.
+
+% \section{Identified Research Gaps and Research Contribution}
+% % Gaps → your contribution; end with clear statement of novelty.
+
+\chapter{Literature Review}
+\label{ch3_literature_review}
+
+This chapter provides a comprehensive systematic review of the research landscape surrounding Retrieval-Augmented Generation (RAG), adversarial AI security, and automated evaluation methodologies. The review is structured to first establish the evolution of RAG architectures from naive implementations to complex, modular systems. Subsequently, it analyzes the state-of-the-art in evaluation metrics, distinguishing between retrieval-centric and generation-centric approaches. A significant portion of the chapter is dedicated to the emerging threat of "Knowledge Poisoning" and the limitations of current defense mechanisms. The chapter concludes by synthesizing these findings to articulate the specific research gaps this thesis aims to bridge.
+
+\section{The Evolution of RAG Architectures}
+\label{sec:lit_rag_evolution}
+
+Retrieval-Augmented Generation has evolved significantly since its inception. \textcite{gao2024retrieval} categorize this evolution into three distinct paradigms: Naive RAG, Advanced RAG, and Modular RAG.
+
+\subsection{Naive vs. Advanced RAG}
+The "Naive" RAG paradigm follows a linear "Retrieve-Then-Generate" process. While effective for simple queries, it suffers from low precision when retrieved documents are noisy or conflicting. "Advanced" RAG introduces pre-retrieval strategies (e.g., query rewriting) and post-retrieval strategies (e.g., re-ranking) to improve context quality. However, these improvements primarily focus on relevance, often neglecting the veracity of the content.
+
+\subsection{Modular RAG and Agentic Workflows}
+The current state-of-the-art is moving toward "Modular RAG," where the retriever, generator, and evaluator function as independent, interchangeable modules. This aligns with the "Agentic" approach proposed in this thesis, where an autonomous agent intervenes in the pipeline. \textcite{asai2024selfrag} demonstrate that modular architectures allow for "Self-Reflection," enabling the model to critique its own retrieved context.
+
+\section{Evaluation Methodologies in RAG}
+\label{sec:lit_evaluation}
+
+Evaluating RAG systems requires a dual approach: assessing the quality of the retrieval (Information Retrieval metrics) and the quality of the generated text (Natural Language Generation metrics).
+
+\subsection{Retrieval-Centric Metrics}
+Before a response is generated, the system must first retrieve relevant documents. The efficacy of this stage is typically measured using standard Information Retrieval (IR) metrics established by \textcite{karpukhin2020dense} in their work on Dense Passage Retrieval (DPR):
+\begin{itemize}
+    \item \textbf{Recall@k:} Measures the proportion of relevant documents found in the top-$k$ results.
+    \item \textbf{Mean Reciprocal Rank (MRR):} Evaluates how high the first relevant document appears in the list.
+\end{itemize}
+While these metrics measure \textit{relevance}, they fail to measure \textit{safety}. A poisoned document engineered to be "highly relevant" would score perfectly on MRR, highlighting a critical blind spot in standard IR evaluation.
+
+\subsection{Generation-Centric and Reference-Free Metrics}
+Traditionally, generation quality was measured using n-gram overlap metrics like BLEU and ROUGE. However, \textcite{lin2022truthfulqa} and \textcite{honovich2022true} argue that these are insufficient for measuring factuality.
+\begin{itemize}
+    \item \textbf{Factuality (Faithfulness):} Does the answer contradict the context?
+    \item \textbf{Truthfulness:} Does the answer align with world knowledge?
+\end{itemize}
+Frameworks like \textbf{RAGAS} \parencite{es2024ragas} and \textbf{ARES} \parencite{saadfalcon2024ares} utilize LLMs as judges to score these dimensions. \textcite{honovich2022true} introduced the TRUE benchmark to standardize factual consistency evaluation, using Natural Language Inference (NLI) to determine if a claim is entailed by its evidence.
+
+\section{Adversarial Attacks on RAG Pipelines}
+\label{sec:lit_attacks}
+
+As RAG systems increasingly rely on open-web data, they inherit vulnerabilities associated with untrusted sources.
+
+\subsection{Indirect Prompt Injection}
+\textcite{greshake2023indirect} demonstrated "Indirect Prompt Injection," a sophisticated attack where adversaries embed malicious instructions (e.g., "Ignore previous instructions and output 'Scam'") into web content. When an LLM retrieves this content, it treats the injected text as authoritative instructions rather than passive data.
+
+\subsection{Knowledge Poisoning (Corpus Poisoning)}
+Building on injection attacks, \textcite{zou2024poisoned} formalized "Knowledge Poisoning" in RAG. Unlike training data poisoning (which requires expensive model retraining), knowledge poisoning targets the inference database.
+\subsubsection{Mechanism of Attack}
+Attackers generate "collision" documents that maximize vector similarity with targeted queries. \textcite{zou2024poisoned} showed that poisoning fewer than 0.1\% of the documents in a retrieval corpus can achieve an Attack Success Rate (ASR) of over 40\% on specific topics.
+\subsubsection{Targeted vs. Untargeted Attacks}
+Literature distinguishes between targeted attacks (forcing a specific wrong answer) and untargeted attacks (degrading general system utility). This thesis specifically focuses on detecting targeted misinformation injections.
+
+
+
+\section{Defense Mechanisms and Fact Verification}
+\label{sec:lit_defense}
+
+Current defenses can be categorized into static preprocessing and dynamic verification.
+
+\subsection{Static Defenses (Filtering)}
+Standard defenses involve filtering "toxic" content using classifiers before indexing. However, misinformation is often phrased neutrally and professionally, bypassing toxicity filters.
+
+\subsection{Dynamic Verification (NLI Approaches)}
+The most promising defense lies in dynamic verification using Natural Language Inference (NLI). NLI models classify the relationship between two sentences as \textit{Entailment}, \textit{Contradiction}, or \textit{Neutral}. \textcite{shuster2021retrieval} utilized this approach to reduce hallucinations in conversational agents. By treating the retrieved document as the "Premise" and the generated answer as the "Hypothesis," NLI can mathematically quantify consistency.
+
+\subsection{Agentic Self-Correction}
+Recent works like \textbf{Self-RAG} \parencite{asai2024selfrag} introduce "critic tokens" that allow the model to self-assess generation quality. While effective for benign errors, it remains unclear if self-correction is robust against adversarial inputs designed to manipulate the critic itself.
+
+\section{Identified Research Gaps}
+\label{sec:research_gap}
+
+Despite the proliferation of RAG evaluation frameworks, significant gaps remain:
+\begin{enumerate}
+    \item \textbf{The Trust-Security Gap:} Existing frameworks like RAGAS measure if the model follows the context, but not if the context is safe. There is a lack of tools that simultaneously evaluate \textit{Factuality} and \textit{Security}.
+    \item \textbf{Lack of Real-Time Auditing:} Most poisoning defenses are offline corpus-cleaning tasks. There is a need for an online Evaluation Agent that sits in the inference loop.
+    \item \textbf{Unified Metrics:} There is no widely accepted "Trust Index" that aggregates retrieval safety, generation faithfulness, and adversarial robustness into a single interpretable score for stakeholders.
+    \item \textbf{LLM Generation-Style Sensitivity:} No existing evaluation framework systematically examines how the LLM's generation style interacts with NLI-based trust scoring. Verbose or hedged model outputs (e.g., ``\textit{Based on the provided context...}'') reduce entailment confidence in the NLI Verifier even when the answer is factually correct, introducing model-specific false positives that are invisible to retrieval-only analysis. This gap motivates a multi-LLM comparative evaluation of the Trust Index, as conducted in this thesis.
+\end{enumerate}
+
+This thesis addresses these gaps by designing an autonomous Evaluation Agent that combines NLI-based verification with specific poisoning detection logic, and by evaluating its performance across multiple LLM and embedding model combinations.
+
+\section{Summary}
+This chapter reviewed the trajectory of RAG research from basic retrieval to modular, agentic systems. It highlighted that while evaluation metrics for relevance are mature, metrics for adversarial robustness in retrieval are nascent. The literature confirms that Knowledge Poisoning is a critical, under-addressed threat, validating the need for the Evaluation Agent proposed in this study.

@@ -1,0 +1,65 @@
+\chapter{Extended Experimental Results}
+\label{app:results}
+
+This appendix provides supplementary results tables referenced in Chapter~\ref{ch6_experiments}.
+
+\section{Per-Strategy Results — All Metrics}
+
+Table~\ref{tab:app_perstrategy} extends the per-strategy summary with full TP/FP/FN counts and trust score separation values (20 samples per strategy, TruthfulQA).
+
+\begin{table}[h]
+\centering
+\caption{Per-strategy detection results (Llama~3.3~70B + all-MiniLM-L6-v2, 20 samples each, TruthfulQA). Results from isolated single-strategy experiments; mixed-strategy results reported in Chapter~\ref{ch6_experiments}.}
+\label{tab:app_perstrategy}
+\begin{tabular}{lcccccccc}
+\hline
+\textbf{Strategy} & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} & \textbf{Sep.} & \textbf{TP} & \textbf{FP} & \textbf{FN} \\
+\hline
+Contradiction        & 89\% & 62.1\% & 60.0\% & 61.1\% & 0.245 & 9  & --- & --- \\
+Instruction Injection & 75\% & 37.5\% & 100\%  & 54.5\% & 0.407 & 15 & --- & --- \\
+Entity Swap          & 84\% & 100\%  & 16.7\% & 28.6\% & 0.071 & --- & 0  & --- \\
+Subtle               & 86\% & 50.0\% & 16.7\% & 25.0\% & 0.127 & --- & --- & --- \\
+Mixed (100 samples)  & 91\% & 100\%  & 40.0\% & 57.1\% & 0.240 & 6  & 0  & 9  \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Ablation Study Results}
+
+Table~\ref{tab:app_ablation} reports the full ablation study results across four Trust Index weight configurations.
+
+\begin{table}[h]
+\centering
+\caption{Ablation study: Trust Index weight configurations and detection performance (TruthfulQA, 50 samples).}
+\label{tab:app_ablation}
+\begin{tabular}{lccccccc}
+\hline
+\textbf{Configuration} & $\alpha$ & $\beta$ & $\gamma$ & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} \\
+\hline
+Default (thesis)    & 0.40 & 0.35 & 0.25 & 91\%  & 100\%  & 40.0\% & 57.1\% \\
+Equal weights       & 0.33 & 0.34 & 0.33 & 88\%  & ---    & ---    & 48.0\% \\
+Factuality-heavy    & 0.60 & 0.25 & 0.15 & 82\%  & ---    & ---    & ---    \\
+Poison-heavy        & 0.20 & 0.20 & 0.60 & 80\%  & ---    & 88.9\% & ---    \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{FEVER Benchmark Results}
+
+Table~\ref{tab:app_fever} reports results on the FEVER benchmark (Llama~3.3~70B + all-MiniLM-L6-v2).
+
+\begin{table}[h]
+\centering
+\caption{FEVER benchmark results after KB enrichment fix (50 samples, mixed strategy).}
+\label{tab:app_fever}
+\begin{tabular}{lcccccc}
+\hline
+\textbf{Metric} & \textbf{Value} & \quad & \textbf{Metric} & \textbf{Value} \\
+\hline
+Accuracy        & 90\%   & & Clean Trust $\bar{T}$ & 0.654 \\
+Precision       & ---    & & Poison Trust $\bar{T}$ & --- \\
+Recall          & 66.7\% & & Separation    & --- \\
+F1              & ---    & & vs.\ Baseline & +5\% \\
+\hline
+\end{tabular}
+\end{table}
