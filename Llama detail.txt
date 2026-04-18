@@ -1,8 +1,0 @@
-curl -s <strong>https://gptlab.rd.tuni.fi/students/ollama/v1</strong>/completions -d '{
-  "model": "<strong>llama3.3:70b</strong>",
-  "prompt": "Tell me about the moon"
-}' -H "Authorization: Bearer <strong>sk-ollama-gptlab-toufique-student-63aca62c5c1497228ab5a487037cea15</strong>"
-
-
-
-If you face problem with the API key that I provided earlier, try this one: sk-ollama-gptlab-2026H1-c38801d459ca0ac22b7f78d61fe718b6

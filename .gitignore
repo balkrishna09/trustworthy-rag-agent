@@ -125,20 +125,9 @@ Thumbs.db
 *.key
 secrets.yaml
 
-# Personal/sensitive files
+# Credentials/sensitive files
+Llama detail.txt
 test_Fami.py
-Project_Documentation.docx
-Project_Documentation.pdf
-
-# Meeting notes (personal)
-Meeting_Agenda_5March2026.docx
-Meeting_Cheat_Sheet.docx
-Meeting_Cheat_Sheet_backup.docx
-Meeting_Cheat_Sheet_v2.docx
-Meeting_Cheat_Sheet_v2.pdf
-Thesis_Summary_PhD_Application.docx
-Thesis_Summary_PhD_Application.md
-_ul
 
 # Claude AI
 .claude/
