@@ -52,6 +52,25 @@ The research is structured into three distinct phases:
     \item \textbf{Phase 3: Empirical Evaluation.} A comparative analysis measuring the agent's ability to detect poisoning and its impact on system latency and retrieval accuracy.
 \end{enumerate}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    box/.style={rectangle, draw=black!70, rounded corners=5pt,
+                minimum width=3.6cm, minimum height=1.4cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60}
+]
+    \node[box, fill=blue!15]   (p1) {\textbf{Phase 1}\\[2pt]Dataset Preparation\\\& Injection};
+    \node[box, fill=orange!15, right=1.6cm of p1] (p2) {\textbf{Phase 2}\\[2pt]System\\Development};
+    \node[box, fill=green!15,  right=1.6cm of p2] (p3) {\textbf{Phase 3}\\[2pt]Empirical\\Evaluation};
+
+    \draw[arr] (p1) -- (p2);
+    \draw[arr] (p2) -- (p3);
+\end{tikzpicture}
+\caption{Three-phase research design following the Design Science Research (DSR) paradigm.}
+\label{fig:research_phases}
+\end{figure}
+
 \section{Threat Model and Assumptions}
 \label{sec:threat_model}
 
@@ -82,8 +101,37 @@ The proposed "Trustworthy RAG Framework" introduces a middleware layer between t
 \begin{itemize}
     \item \textbf{The Retriever:} A dense vector store (FAISS) supporting two embedding backends evaluated in this thesis: (i) \texttt{all-MiniLM-L6-v2} (384-dimensional, local Sentence-BERT family) and (ii) \texttt{snowflake-arctic-embed2} (1024-dimensional, accessed via FARMI API). Both retrieve the top-$k$ semantically similar documents per query.
     \item \textbf{The Evaluation Agent (The Artifact):} An autonomous module that acts as a "Gatekeeper." It analyzes the retrieved documents for semantic consistency and malicious patterns before they are passed to the generator.
-    \item \textbf{The Generator:} Two LLMs are evaluated: \texttt{llama3.3:70b} and \texttt{qwen3.5:35b}, both hosted on the FARMI computing cluster (Tampere University) via an OpenAI-compatible API. Llama 3.3 70B serves as the primary thesis baseline; Qwen 3.5 35B is included as a cross-model comparison point to assess the sensitivity of the Trust Index to LLM generation style.
+    \item \textbf{The Generator:} Two LLMs are evaluated: \texttt{llama3.3:70b} and \texttt{qwen3.5:35b}, both hosted on the FARMI computing cluster (Tampere University) via an OpenAI-compatible API. Llama 3.3 70B serves as the reference generator for the main experiments; Qwen 3.5 35B is included as a cross-model comparison point to assess the sensitivity of the Trust Index to LLM generation style.
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm and 0.9cm,
+    box/.style={rectangle, draw=black!70, rounded corners=4pt,
+                minimum width=1.9cm, minimum height=0.9cm,
+                text centered, align=center, font=\small},
+    gate/.style={rectangle, draw=red!70!black, line width=0.8pt, rounded corners=4pt,
+                 fill=red!10, minimum width=2.1cm, minimum height=0.9cm,
+                 text centered, align=center, font=\small\bfseries},
+    arr/.style={-Stealth, thick, black!60}
+]
+    \node[box, fill=blue!15]    (query) {Query};
+    \node[box, fill=orange!20,  right=0.8cm of query]  (ret)   {Retriever\\{\footnotesize FAISS}};
+    \node[gate,                 right=1.2cm of ret]    (agent) {Eval.\ Agent\\{\footnotesize (Gatekeeper)}};
+    \node[box, fill=green!15,   right=1.2cm of agent]  (gen)   {Generator\\{\footnotesize LLM}};
+    \node[box, fill=gray!15,    right=0.8cm of gen]    (resp)  {Response\\{\footnotesize + Trust}};
+    \node[box, fill=yellow!15,  below=1.0cm of ret]    (kb)    {Knowledge\\Base};
+
+    \draw[arr] (query) -- (ret);
+    \draw[arr] (ret)   -- (agent) node[midway, above, align=center, font=\footnotesize\itshape] {docs,\\scores};
+    \draw[arr] (agent) -- (gen)   node[midway, above, align=center, font=\footnotesize\itshape] {if\\trusted};
+    \draw[arr] (gen)   -- (resp);
+    \draw[arr] (kb)    -- (ret);
+\end{tikzpicture}
+\caption{Architecture of the Trustworthy RAG Framework. The Evaluation Agent acts as a gatekeeper between retrieval and generation, blocking untrusted context before it reaches the LLM.}
+\label{fig:system_architecture}
+\end{figure}
 
 \subsection{Multi-Model Evaluation Design}
 \label{subsec:factorial_design}
@@ -96,6 +144,57 @@ To assess the sensitivity of the Trust Index to model selection, a \textbf{2×2 
 \end{equation*}
 
 This yields four experimental configurations, all run with identical hyperparameters (100 samples, 30\% poison ratio, $K=3$ retrieved documents, classification threshold $\tau=0.5$). The design allows isolation of LLM effects from embedding effects and tests whether the Trust Index generalizes across model choices or is fundamentally dependent on a specific generator's output style. A separate sensitivity analysis comparing $K=3$ and $K=5$ retrieval depths for the primary Llama~3.3~70B + all-MiniLM-L6-v2 configuration is presented in Section~\ref{sec:ch6_topk}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small]
+    % Grid layout (all dimensions in cm):
+    % Columns: 0 | 3.0 | 7.5 | 12.0
+    % Rows:    0 | -1.5 | -2.9 | -4.3
+
+    % Background fills
+    \fill[gray!15]   (0,0)      rectangle (12.0,-1.5);   % header row
+    \fill[gray!15]   (0,-1.5)   rectangle (3.0,-4.3);    % label column
+    \fill[blue!10]   (3.0,-1.5) rectangle (7.5,-2.9);    % C1
+    \fill[blue!8]    (7.5,-1.5) rectangle (12.0,-2.9);   % C2
+    \fill[orange!10] (3.0,-2.9) rectangle (7.5,-4.3);    % C3
+    \fill[orange!8]  (7.5,-2.9) rectangle (12.0,-4.3);   % C4
+
+    % Grid lines
+    \draw[black!70, thick] (0,0) rectangle (12.0,-4.3);
+    \draw[black!40] (3.0,0)   -- (3.0,-4.3);
+    \draw[black!40] (7.5,0)   -- (7.5,-4.3);
+    \draw[black!40] (0,-1.5)  -- (12.0,-1.5);
+    \draw[black!40] (0,-2.9)  -- (12.0,-2.9);
+
+    % Header labels (column headers)
+    \node[align=center, text width=4.1cm] at (5.25,-0.75)
+        {\textbf{all-MiniLM-L6-v2}\\{\footnotesize(384-dim)}};
+    \node[align=center, text width=4.1cm] at (9.75,-0.75)
+        {\textbf{Snowflake Arctic}\\\textbf{Embed2}\\{\footnotesize(1024-dim)}};
+
+    % Row labels
+    \node[align=center, text width=2.6cm, font=\small\bfseries] at (1.5,-2.2)
+        {Llama 3.3 70B};
+    \node[align=center, text width=2.6cm, font=\small\bfseries] at (1.5,-3.6)
+        {Qwen 3.5 35B};
+
+    % Data cell contents
+    \node[align=center, text width=4.1cm] at (5.25,-2.2)
+        {C1 --- Primary Baseline\\{\footnotesize (main thesis results)}};
+    \node[align=center, text width=4.1cm] at (9.75,-2.2)
+        {C2\\{\footnotesize (embedding comparison)}};
+    \node[align=center, text width=4.1cm] at (5.25,-3.6)
+        {C3\\{\footnotesize (LLM comparison)}};
+    \node[align=center, text width=4.1cm] at (9.75,-3.6)
+        {C4\\{\footnotesize (cross comparison)}};
+
+    % Blue highlight border on C1
+    \draw[blue!70, line width=1.5pt] (3.0,-1.5) rectangle (7.5,-2.9);
+\end{tikzpicture}
+\caption{2$\times$2 factorial experimental design crossing two LLMs with two embedding models, yielding four configurations (C1--C4). C1 (Llama~3.3~70B + all-MiniLM-L6-v2, highlighted) is the reference configuration for model-comparison experiments.}
+\label{fig:factorial_design}
+\end{figure}
 
 \section{Dataset Selection and Preparation}
 \label{sec:dataset_prep}
@@ -116,7 +215,7 @@ Since no standard "Poisoned RAG" dataset exists for this specific architecture, 
     \item \textbf{Entity Swap:} Replaces entities or numbers in-place within the original text (e.g., swapping ``14 million'' for ``41 million''). Since domain-specific documents (such as TruthfulQA entries) rarely contain common geopolitical named entities, a three-level fallback is employed: (1) predefined entity substitution (e.g., Paris~$\rightarrow$~Berlin); (2) numeric value shifting via regular expressions when no named entity is present; (3) qualifier or negation swapping in the answer segment of the document (e.g., replacing ``is'' with ``is not''). If none of these produce a textual change, a plausible-sounding dispute sentence is appended as a last resort.
     \item \textbf{Subtle:} Combines entity swap with minor qualifier additions for minimal, hard-to-detect modifications.
 \end{itemize}
-Experiments use 50 samples per run with a poison ratio of 30\% (i.e., 30\% of retrieved documents are poisoned). Per-strategy experiments isolate each attack type; mixed experiments combine all four strategies.
+Main and per-strategy experiments use 100 samples per run (50 clean Part~A + 50 poisoned Part~B) with a poison ratio of 30\% (i.e., 30\% of retrieved documents are poisoned). Ablation variants use 60 samples. Per-strategy experiments isolate each attack type; mixed experiments combine all four strategies.
 
 \section{Evaluation Metrics}
 \label{sec:eval_metrics}

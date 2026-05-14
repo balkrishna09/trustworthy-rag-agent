@@ -41,6 +41,52 @@ At runtime, the orchestration class (\texttt{evaluation\_agent.py}) executes:
     \item final Trust Index computation and report generation.
 \end{enumerate}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm and 1.4cm,
+    box/.style={rectangle, draw=black!70, rounded corners=4pt,
+                minimum width=3.0cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    mod/.style={rectangle, draw=black!70, rounded corners=4pt, fill=blue!10,
+                minimum width=3.2cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    out/.style={rectangle, draw=black!70, rounded corners=4pt, fill=green!12,
+                minimum width=3.2cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60}
+]
+    % Input node
+    \node[box, fill=blue!15, minimum width=5.0cm]  (inp)   {Input: query, answer, docs, scores, embeddings};
+
+    % Three modules
+    \node[mod, below=1.0cm of inp, xshift=-3.6cm]  (nli)   {NLI Verifier\\{\footnotesize nli\_verifier.py}};
+    \node[mod, below=1.0cm of inp]                  (pois)  {Poison Detector\\{\footnotesize poison\_detector.py}};
+    \node[mod, below=1.0cm of inp, xshift=3.6cm]   (cons)  {Consistency\\Estimator};
+
+    % Trust index
+    \node[box, fill=orange!15, below=1.0cm of pois, minimum width=3.4cm] (trust) {Trust Index Calculator\\{\footnotesize trust\_index.py}};
+
+    % Output
+    \node[out, below=1.0cm of trust, minimum width=4.2cm] (result) {EvaluationResult\\{\footnotesize (score, level, warnings, report)}};
+
+    % Arrows from input
+    \draw[arr] (inp.south) -- ++(0,-0.3) -| (nli.north);
+    \draw[arr] (inp.south) -- (pois.north);
+    \draw[arr] (inp.south) -- ++(0,-0.3) -| (cons.north);
+
+    % Arrows to trust index
+    \draw[arr] (nli.south)  -- ++(0,-0.3) -| (trust.north);
+    \draw[arr] (pois.south) -- (trust.north);
+    \draw[arr] (cons.south) -- ++(0,-0.3) -| (trust.north);
+
+    % Arrow to output
+    \draw[arr] (trust) -- (result);
+\end{tikzpicture}
+\caption{Internal architecture of the Evaluation Agent. Three parallel modules feed into the Trust Index Calculator, which produces the final \texttt{EvaluationResult}.}
+\label{fig:eval_agent_arch}
+\end{figure}
+
 \subsection{Claim Extraction}
 In the current implementation, explicit claim decomposition is intentionally lightweight. Instead of extracting atomic claims via an additional parser, the generated response itself is treated as the primary hypothesis for verification. This design choice reduces complexity and latency in the first system version.
 
@@ -102,6 +148,43 @@ The poison detector combines multiple signals:
     \item \textbf{Semantic outlier analysis:} embedding-based deviation from batch centroid.
 \end{enumerate}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    sig/.style={rectangle, draw=black!70, rounded corners=3pt, fill=red!8,
+                minimum width=4.0cm, minimum height=0.75cm,
+                text centered, align=center, font=\small},
+    agg/.style={rectangle, draw=black!70, rounded corners=4pt, fill=orange!20,
+                minimum width=3.6cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    out/.style={rectangle, draw=black!70, rounded corners=4pt, fill=green!12,
+                minimum width=3.0cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60}
+]
+    % Five signal nodes (left column)
+    \node[sig] (s1) {1.\ Linguistic Patterns};
+    \node[sig, below=0.3cm of s1] (s2) {2.\ Structural Anomalies};
+    \node[sig, below=0.3cm of s2] (s3) {3.\ Intra-doc NLI};
+    \node[sig, below=0.3cm of s3] (s4) {4.\ Cross-doc NLI};
+    \node[sig, below=0.3cm of s4] (s5) {5.\ Semantic Outlier};
+
+    % Aggregator (right)
+    \node[agg, right=2.2cm of s3] (agg) {Relevance-Weighted\\Aggregation};
+
+    % Output
+    \node[out, right=1.8cm of agg] (prob) {Poison\\Probability $P$};
+
+    % Arrows from signals to aggregator
+    \foreach \s in {s1,s2,s3,s4,s5}{
+        \draw[arr] (\s.east) -- (agg.west);
+    }
+    \draw[arr] (agg) -- (prob);
+\end{tikzpicture}
+\caption{Poison detection pipeline. Five independent signal detectors feed into a relevance-weighted aggregator to produce the final per-document poison probability $P$.}
+\label{fig:poison_pipeline}
+\end{figure}
+
 Each document receives a poison probability from combined signals with diminishing returns. A batch-level poison probability is then computed. In the final design, relevance-weighted aggregation is used when retrieval scores are available, so low-ranked suspicious neighbors do not dominate the final decision.
 
 \subsection{Trustworthiness Aggregation}
@@ -143,11 +226,12 @@ $\gamma$ & Poison safety & 0.25 & Poison detection combines heuristic signals of
 \end{tabular}
 \end{table}
 
-The weight configuration was empirically validated through an ablation study reported in
-Chapter~\ref{ch6_experiments}, which tested four configurations including equal weights
-(0.33, 0.34, 0.33) and poison-heavy settings. The default weights yielded the best overall
-F1 performance, confirming that factuality and consistency together contribute more
-discriminative power than the poison score alone.
+The weight configuration was examined through an exploratory ablation study reported in
+Chapter~\ref{ch6_experiments}, which tested five configurations including equal weights
+(0.33, 0.34, 0.33), consistency-heavy, and poison-heavy settings. The ablation shows that
+weight choice affects sensitivity on the smaller ablation subset, but it does not establish
+a globally optimal configuration. The default weights are therefore treated as the primary
+operating point used in the main experiment rather than as a proven optimum.
 
 \subsubsection{Insufficiency of the Linear Formula Under High Poisoning}
 \label{subsubsec:linear_insufficiency}
@@ -351,6 +435,31 @@ When evaluation is enabled:
     \item Evaluation Agent computes trust score and detailed diagnostics;
     \item pipeline returns a unified \texttt{RAGResponse} object with optional \texttt{evaluation} field.
 \end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.45cm and 0cm,
+    step/.style={rectangle, draw=black!70, rounded corners=3pt,
+                 minimum width=6.5cm, minimum height=0.75cm,
+                 text ragged, align=left, font=\small,
+                 inner xsep=8pt},
+    arr/.style={-Stealth, thick, black!50}
+]
+    \node[step, fill=blue!12]    (s1) {\textbf{1.}\ Query enters \texttt{query\_with\_evaluation()}};
+    \node[step, fill=orange!12, below=0.3cm of s1] (s2) {\textbf{2.}\ Retriever returns docs, scores, embeddings};
+    \node[step, fill=orange!12, below=0.3cm of s2] (s3) {\textbf{3.}\ Generator produces response from context};
+    \node[step, fill=red!10,    below=0.3cm of s3] (s4) {\textbf{4.}\ Evaluation Agent computes trust score \& diagnostics};
+    \node[step, fill=green!12,  below=0.3cm of s4] (s5) {\textbf{5.}\ \texttt{RAGResponse} returned with \texttt{evaluation} field};
+
+    \draw[arr] (s1) -- (s2);
+    \draw[arr] (s2) -- (s3);
+    \draw[arr] (s3) -- (s4);
+    \draw[arr] (s4) -- (s5);
+\end{tikzpicture}
+\caption{RAG pipeline integration flow when evaluation mode is enabled via \texttt{query\_with\_evaluation()}.}
+\label{fig:pipeline_integration}
+\end{figure}
 
 The Evaluation Agent is lazily initialized to avoid immediate loading of the NLI model in cases where only fast, non-evaluated querying is required.
 

@@ -147,7 +147,7 @@ def fig1_strategy_detection_rate():
 
 def fig2_trust_score_distribution():
     """Box plot of trust scores: clean vs poisoned."""
-    path = find_latest_experiment("truthfulqa_poison_detection")
+    path = find_latest_experiment("truthfulqa_llama3.3-70b_all-MiniLM-L6-v2_detection")
     data = load_experiment(path)
     if not data:
         print("  [SKIP] No TruthfulQA main experiment found")
@@ -204,8 +204,8 @@ def fig2_trust_score_distribution():
 
 def fig3_confusion_matrices():
     """Side-by-side confusion matrix heatmaps."""
-    tqa_path = find_latest_experiment("truthfulqa_poison_detection")
-    fever_path = find_latest_experiment("fever_poison_detection")
+    tqa_path = find_latest_experiment("truthfulqa_llama3.3-70b_all-MiniLM-L6-v2_detection")
+    fever_path = find_latest_experiment("fever_llama3.3-70b_all-MiniLM-L6-v2_detection")
     tqa = load_experiment(tqa_path)
     fever = load_experiment(fever_path)
 
@@ -248,8 +248,8 @@ def fig3_confusion_matrices():
 
 def fig4_dataset_comparison():
     """Grouped bar chart comparing metrics across datasets."""
-    tqa_path = find_latest_experiment("truthfulqa_poison_detection")
-    fever_path = find_latest_experiment("fever_poison_detection")
+    tqa_path = find_latest_experiment("truthfulqa_llama3.3-70b_all-MiniLM-L6-v2_detection")
+    fever_path = find_latest_experiment("fever_llama3.3-70b_all-MiniLM-L6-v2_detection")
     tqa = load_experiment(tqa_path)
     fever = load_experiment(fever_path)
 
@@ -352,7 +352,7 @@ def fig5_ablation_study():
 
 def fig6_component_breakdown():
     """Violin/strip plots for factuality, consistency, poison probability."""
-    path = find_latest_experiment("truthfulqa_poison_detection")
+    path = find_latest_experiment("truthfulqa_llama3.3-70b_all-MiniLM-L6-v2_detection")
     data = load_experiment(path)
     if not data:
         print("  [SKIP] No TruthfulQA main experiment found")

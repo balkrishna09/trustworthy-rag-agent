@@ -91,7 +91,7 @@ Recent works like \textbf{Self-RAG} \parencite{asai2024selfrag} introduce "criti
 
 Despite the proliferation of RAG evaluation frameworks, significant gaps remain:
 \begin{enumerate}
-    \item \textbf{The Trust-Security Gap:} Existing frameworks like RAGAS measure if the model follows the context, but not if the context is safe. There is a lack of tools that simultaneously evaluate \textit{Factuality} and \textit{Security}.
+    \item \textbf{The Trust-Security Gap:} Existing frameworks like RAGAS measure whether the model follows the context, but not if the context is safe. There is a lack of tools that simultaneously evaluate \textit{Factuality} and \textit{Security}.
     \item \textbf{Lack of Real-Time Auditing:} Most poisoning defenses are offline corpus-cleaning tasks. There is a need for an online Evaluation Agent that sits in the inference loop.
     \item \textbf{Unified Metrics:} There is no widely accepted "Trust Index" that aggregates retrieval safety, generation faithfulness, and adversarial robustness into a single interpretable score for stakeholders.
     \item \textbf{LLM Generation-Style Sensitivity:} No existing evaluation framework systematically examines how the LLM's generation style interacts with NLI-based trust scoring. Verbose or hedged model outputs (e.g., ``\textit{Based on the provided context...}'') reduce entailment confidence in the NLI Verifier even when the answer is factually correct, introducing model-specific false positives that are invisible to retrieval-only analysis. This gap motivates a multi-LLM comparative evaluation of the Trust Index, as conducted in this thesis.

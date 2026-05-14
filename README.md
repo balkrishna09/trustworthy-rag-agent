@@ -93,10 +93,10 @@ python run_experiment.py --all
 ```
 
 This runs all experiments and auto-generates charts:
-- TruthfulQA main experiment (50 samples, mixed poisoning)
-- Per-strategy experiments (injection, contradiction, subtle, entity swap)
-- FEVER dataset experiment
-- Ablation study (5 weight configurations)
+- TruthfulQA main experiment (100 samples, mixed poisoning)
+- Per-strategy experiments (100 samples each: injection, contradiction, entity swap, subtle)
+- FEVER dataset experiment (100 samples)
+- Ablation study (5 weight configurations, 60 samples each)
 
 ### Other Experiment Options
 
@@ -131,23 +131,24 @@ pytest --cov=src          # With coverage report
 
 ## Key Results
 
-### Primary Results (Llama 3.3 70B + all-MiniLM-L6-v2, TruthfulQA, K=5)
+### Primary Results (Llama 3.3 70B + all-MiniLM-L6-v2, TruthfulQA, K=5, 100 samples)
 
 | Dataset | Accuracy | Precision | Recall | F1 Score | vs. Baseline |
 |---------|----------|-----------|--------|----------|--------------|
 | TruthfulQA (mixed) | 91% | 100% | 40% | 57.1% | +7% |
-| FEVER | 90% | — | 66.7% | — | +5% |
+| FEVER (full run) | 73% | 20% | 26.7% | 22.9% | −12% |
 
-Naive always-trust baseline: **85%** (TruthfulQA), **85%** (FEVER)
+Naive always-trust baseline: **85%** (TruthfulQA), **85%** (FEVER).
+FEVER underperforms the baseline — the Trust Index requires domain-specific calibration for short factual claims.
 
-### Per-Strategy Detection (TruthfulQA, 20 samples each)
+### Per-Strategy Detection (TruthfulQA, 100 samples each)
 
-| Strategy | Accuracy | F1 | Recall | Separation |
-|----------|----------|----|--------|------------|
-| Contradiction | 89% | 61.1% | 60% | 0.245 |
-| Injection | 75% | 54.5% | 100% | 0.407 |
-| Entity Swap | 84% | 28.6% | 16.7% | 0.071 |
-| Subtle | 86% | 25.0% | 16.7% | 0.127 |
+| Strategy | Accuracy | Precision | Recall | F1 | Separation |
+|----------|----------|-----------|--------|----|------------|
+| Injection | 99% | 93.8% | 100% | 96.8% | 0.498 |
+| Contradiction | 92% | 88.9% | 53.3% | 66.7% | 0.311 |
+| Subtle | 88% | 100% | 20.0% | 33.3% | 0.149 |
+| Entity Swap | 85% | — | 0% | 0% | 0.053 |
 
 ### 2×2 Factorial Grid (K=3, TruthfulQA, 100 samples)
 
@@ -160,8 +161,8 @@ Naive always-trust baseline: **85%** (TruthfulQA), **85%** (FEVER)
 
 **Key findings:**
 - **Embedding invariance for Llama**: both embedding models yield identical detection results — Trust Index is LLM-driven, not retrieval-driven
-- **Qwen generation-style problem**: verbose/hedged outputs reduce NLI entailment for clean samples → 71% accuracy, below the 85% naive baseline
-- **K sensitivity null result**: K=5 produces identical detection performance to K=3 for Llama 3.3 70B — detection is bottlenecked by attack strategy difficulty, not retrieval depth
+- **Qwen generation-style problem**: verbose/hedged outputs reduce NLI entailment for clean samples → 71% accuracy, **14 percentage points below** the 85% naive baseline
+- **K sensitivity null result**: K=5 produces identical detection performance to K=3 for Llama 3.3 70B — trust score separation changes by only 0.015; detection is bottlenecked by attack strategy difficulty, not retrieval depth
 
 ## Tech Stack
 

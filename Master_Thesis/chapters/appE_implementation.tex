@@ -61,12 +61,12 @@ loguru         & 0.7+     & Structured logging \\
 
 \section{Reproduction Instructions}
 
-To reproduce the primary experiment results (Llama~3.3~70B + all-MiniLM-L6-v2, TruthfulQA, 100 samples, mixed strategy, K=3):
+To reproduce the primary experiment results (Llama~3.3~70B + all-MiniLM-L6-v2, TruthfulQA, 100 samples, mixed strategy, K=5):
 
 \begin{enumerate}
     \item Install dependencies: \texttt{pip install -r requirements.txt}
     \item Configure FARMI API credentials in \texttt{.env}: set \texttt{FARMI\_API\_KEY} and \texttt{FARMI\_API\_BASE}
-    \item Run: \texttt{python run\_experiment.py}; at the interactive prompt, select Llama~3.3~70B, all-MiniLM-L6-v2, and K=3
+    \item Run: \texttt{python run\_experiment.py}; at the interactive prompt, select Llama~3.3~70B, all-MiniLM-L6-v2, and K=5
     \item Results are saved to \texttt{data/experiments/} as a timestamped JSON file
 \end{enumerate}
 

@@ -23,12 +23,28 @@ LLMs store knowledge within their weights (parameters) during the pre-training p
 
 Retrieval-Augmented Generation (RAG) was proposed by \textcite{lewis2020rag} to mitigate the limitations of static LLMs. RAG creates a semi-parametric model by combining a pre-trained generator (the LLM) with a dense vector retriever.
 
-% Placeholder for RAG Architecture Figure
-\begin{figure}[h]
-    \centering
-    % \includegraphics[width=0.8\textwidth]{images/rag_architecture.png}
-    \caption{Schematic of the RAG architecture: Query $\rightarrow$ Retriever $\rightarrow$ Generator $\rightarrow$ Response.}
-    \label{fig:rag_arch}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm and 1.8cm,
+    box/.style={rectangle, draw=black!70, rounded corners=4pt,
+                minimum width=2.2cm, minimum height=0.9cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60}
+]
+    \node[box, fill=blue!15]    (query)    {Query};
+    \node[box, fill=orange!20,  right=2.0cm of query]    (ret)   {Retriever\\{\footnotesize(FAISS)}};
+    \node[box, fill=green!15,   right=2.0cm of ret]      (gen)   {Generator\\{\footnotesize(LLM)}};
+    \node[box, fill=gray!15,    right=2.0cm of gen]      (resp)  {Response};
+    \node[box, fill=yellow!20,  below=1.1cm of ret]      (kb)    {Knowledge\\Base};
+
+    \draw[arr] (query) -- (ret);
+    \draw[arr] (ret)   -- (gen)  node[midway, above, font=\footnotesize\itshape] {top-$k$ docs};
+    \draw[arr] (gen)   -- (resp);
+    \draw[arr] (kb)    -- (ret)  node[midway, right, font=\footnotesize\itshape] {index};
+\end{tikzpicture}
+\caption{Schematic of the RAG architecture: Query $\rightarrow$ Retriever $\rightarrow$ Generator $\rightarrow$ Response.}
+\label{fig:rag_arch}
 \end{figure}
 
 \subsection{Mathematical Formulation}
@@ -67,12 +83,38 @@ Hallucination refers to the generation of unfaithful or nonsensical text. In the
 \label{subsec:knowledge_poisoning}
 Knowledge Poisoning, or Corpus Poisoning, is a targeted security threat. Here, an adversary injects malicious documents into the external knowledge base. These documents are often engineered using \textit{Trigger Phrases} or optimized vector embeddings to ensure they are retrieved for specific queries \parencite{zou2024poisoned}.
 
-% Placeholder for Poisoning Attack Figure
-\begin{figure}[h]
-    \centering
-    % \includegraphics[width=0.8\textwidth]{images/poisoning_attack.png}
-    \caption{Knowledge poisoning attack flow: adversarial documents are injected into the corpus and retrieved for target queries, manipulating the generated output.}
-    \label{fig:poisoning_attack}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm and 1.8cm,
+    box/.style={rectangle, draw=black!70, rounded corners=4pt,
+                minimum width=2.2cm, minimum height=0.9cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60},
+    darr/.style={-Stealth, thick, dashed, red!70!black}
+]
+    % Normal pipeline (top row)
+    \node[box, fill=blue!15]   (query)    {Query};
+    \node[box, fill=orange!20, right=2.0cm of query]   (ret)   {Retriever\\{\footnotesize(FAISS)}};
+    \node[box, fill=green!15,  right=2.0cm of ret]     (gen)   {Generator\\{\footnotesize(LLM)}};
+    \node[box, fill=red!20,    right=2.0cm of gen]     (resp)  {Manipulated\\Response};
+
+    % Knowledge base (middle)
+    \node[box, fill=yellow!15, below=1.1cm of ret]     (kb)    {Knowledge Base\\{\footnotesize (with poison)}};
+
+    % Attacker (bottom)
+    \node[box, fill=red!30, draw=red!80!black,
+          below=1.1cm of kb]                           (att)   {\textbf{Attacker}};
+
+    % Arrows
+    \draw[arr]  (query) -- (ret);
+    \draw[arr]  (ret)   -- (gen)  node[midway, above, font=\footnotesize\itshape] {incl.\ poison doc};
+    \draw[arr]  (gen)   -- (resp);
+    \draw[arr]  (kb)    -- (ret);
+    \draw[darr] (att)   -- (kb)   node[midway, right, font=\footnotesize\itshape, text=red!70!black] {injects};
+\end{tikzpicture}
+\caption{Knowledge poisoning attack flow: adversarial documents are injected into the corpus and retrieved for target queries, manipulating the generated output.}
+\label{fig:poisoning_attack}
 \end{figure}
 
 Unlike "Data Poisoning" (which affects model training weights), Knowledge Poisoning affects the \textit{inference context}. A successful attack leads to \textbf{Indirect Prompt Injection}, where the poisoned document contains instructions that override the system prompt, forcing the LLM to output misinformation or malicious content.

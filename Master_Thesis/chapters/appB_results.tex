@@ -5,52 +5,53 @@ This appendix provides supplementary results tables referenced in Chapter~\ref{c
 
 \section{Per-Strategy Results — All Metrics}
 
-Table~\ref{tab:app_perstrategy} extends the per-strategy summary with full TP/FP/FN counts and trust score separation values (20 samples per strategy, TruthfulQA).
+Table~\ref{tab:app_perstrategy} extends the per-strategy summary with full TP/FP/FN counts and trust score separation values (100 samples per strategy, TruthfulQA, $K=5$).
 
 \begin{table}[h]
 \centering
-\caption{Per-strategy detection results (Llama~3.3~70B + all-MiniLM-L6-v2, 20 samples each, TruthfulQA). Results from isolated single-strategy experiments; mixed-strategy results reported in Chapter~\ref{ch6_experiments}.}
+\caption{Per-strategy detection results (Llama~3.3~70B + all-MiniLM-L6-v2, 100 samples each, TruthfulQA, $K=5$). Results from isolated single-strategy experiments; mixed-strategy results reported in Chapter~\ref{ch6_experiments}.}
 \label{tab:app_perstrategy}
 \begin{tabular}{lcccccccc}
 \hline
 \textbf{Strategy} & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} & \textbf{Sep.} & \textbf{TP} & \textbf{FP} & \textbf{FN} \\
 \hline
-Contradiction        & 89\% & 62.1\% & 60.0\% & 61.1\% & 0.245 & 9  & --- & --- \\
-Instruction Injection & 75\% & 37.5\% & 100\%  & 54.5\% & 0.407 & 15 & --- & --- \\
-Entity Swap          & 84\% & 100\%  & 16.7\% & 28.6\% & 0.071 & --- & 0  & --- \\
-Subtle               & 86\% & 50.0\% & 16.7\% & 25.0\% & 0.127 & --- & --- & --- \\
-Mixed (100 samples)  & 91\% & 100\%  & 40.0\% & 57.1\% & 0.240 & 6  & 0  & 9  \\
+Contradiction        & 92\% & 88.9\% & 53.3\% & 66.7\% & 0.311 & 8  & 1  & 7  \\
+Instruction Injection & 99\% & 93.8\% & 100\%  & 96.8\% & 0.498 & 15 & 1  & 0  \\
+Entity Swap          & 85\% & ---    & 0\%    & 0\%    & 0.053 & 0  & 0  & 15 \\
+Subtle               & 88\% & 100\%  & 20.0\% & 33.3\% & 0.149 & 3  & 0  & 12 \\
+Mixed                & 91\% & 100\%  & 40.0\% & 57.1\% & 0.225 & 6  & 0  & 9  \\
 \hline
 \end{tabular}
 \end{table}
 
 \section{Ablation Study Results}
 
-Table~\ref{tab:app_ablation} reports the full ablation study results across four Trust Index weight configurations.
+Table~\ref{tab:app_ablation} reports the full ablation study results across five Trust Index weight configurations.
 
 \begin{table}[h]
 \centering
-\caption{Ablation study: Trust Index weight configurations and detection performance (TruthfulQA, 50 samples).}
+\caption{Ablation study: Trust Index weight configurations and detection performance (TruthfulQA, 60 samples).}
 \label{tab:app_ablation}
 \begin{tabular}{lccccccc}
 \hline
 \textbf{Configuration} & $\alpha$ & $\beta$ & $\gamma$ & \textbf{Acc.} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} \\
 \hline
-Default (thesis)    & 0.40 & 0.35 & 0.25 & 91\%  & 100\%  & 40.0\% & 57.1\% \\
-Equal weights       & 0.33 & 0.34 & 0.33 & 88\%  & ---    & ---    & 48.0\% \\
-Factuality-heavy    & 0.60 & 0.25 & 0.15 & 82\%  & ---    & ---    & ---    \\
-Poison-heavy        & 0.20 & 0.20 & 0.60 & 80\%  & ---    & 88.9\% & ---    \\
+Default             & 0.40 & 0.35 & 0.25 & 86.7\% & 100\% & 11.1\% & 20.0\% \\
+Equal weights       & 0.33 & 0.34 & 0.33 & 86.7\% & 100\% & 11.1\% & 20.0\% \\
+Factuality-heavy    & 0.60 & 0.20 & 0.20 & 86.7\% & 100\% & 11.1\% & 20.0\% \\
+Consistency-heavy   & 0.20 & 0.60 & 0.20 & 88.3\% & 100\% & 22.2\% & 36.4\% \\
+Poison-heavy        & 0.20 & 0.20 & 0.60 & 88.3\% & 100\% & 22.2\% & 36.4\% \\
 \hline
 \end{tabular}
 \end{table}
 
-\section{FEVER Benchmark Results}
+\section{FEVER Benchmark Pilot Results}
 
-Table~\ref{tab:app_fever} reports results on the FEVER benchmark (Llama~3.3~70B + all-MiniLM-L6-v2).
+Table~\ref{tab:app_fever} reports early pilot results on the FEVER benchmark (Llama~3.3~70B + all-MiniLM-L6-v2). These 20-sample pilot results indicated high accuracy (90\%) initially, but a subsequent full 100-sample experiment (reported in Chapter~\ref{ch6_experiments}) revealed broader generalisability challenges.
 
 \begin{table}[h]
 \centering
-\caption{FEVER benchmark results after KB enrichment fix (50 samples, mixed strategy).}
+\caption{FEVER benchmark early pilot results after KB enrichment fix (20 samples, mixed strategy, $K=3$).}
 \label{tab:app_fever}
 \begin{tabular}{lcccccc}
 \hline
