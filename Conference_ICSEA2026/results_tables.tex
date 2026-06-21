@@ -1,0 +1,21 @@
+% --- Auto-generated: run-to-run variance (Llama 3.3 70B + MiniLM, K=5) ---
+\begin{table}[t]\caption{Run-to-run variance: mean$\pm$std over $R$ independent repeats (TruthfulQA, Llama~3.3~70B + MiniLM, $K{=}5$, 100 samples/run).}\label{tab:variance}\centering\small
+\begin{tabular}{lcccc}\toprule
+Strategy & $R$ & Acc.\,(\%) & Recall\,(\%) & F1\,(\%) \\\midrule
+Instruction injection & 2 & 99.0$\pm$0.0 & 100.0$\pm$0.0 & 96.8$\pm$0.0 \\
+Contradiction & 2 & 92.5$\pm$0.5 & 53.3$\pm$0.0 & 68.1$\pm$1.4 \\
+Subtle manip. & 2 & 88.0$\pm$0.0 & 20.0$\pm$0.0 & 33.3$\pm$0.0 \\
+Entity swap & 2 & 85.0$\pm$0.0 & 3.3$\pm$3.3 & 5.9$\pm$5.9 \\
+Mixed & 5 & 90.6$\pm$0.5 & 40.0$\pm$0.0 & 56.1$\pm$1.3 \\
+\bottomrule\end{tabular}\end{table}
+
+% --- Auto-generated: per-LLM calibration ---
+\begin{table}[t]\caption{Per-LLM threshold calibration (TruthfulQA mixed, $K{=}5$). $\tau$ fit on clean scores only; evaluated on held-out clean + poisoned. ROC-AUC is threshold-independent.}\label{tab:calib}\centering\small
+\begin{tabular}{llccccc}\toprule
+LLM & $\tau$ & Acc. & Prec. & Rec. & F1 & ROC-AUC \\\midrule
+\multirow{2}{*}{Llama 3.3 70B} & 0.50 & 84.1 & 96.1 & 40.8 & 57.3 & \multirow{2}{*}{0.807} \\
+ & 0.71 & 83.0 & 71.9 & 57.5 & 63.9 & \\
+\midrule
+\multirow{2}{*}{Qwen 3.5 35B} & 0.50 & 65.5 & 38.4 & 53.3 & 44.7 & \multirow{2}{*}{0.728} \\
+ & 0.43 & 74.5 & 51.4 & 40.0 & 45.0 & \\
+\bottomrule\end{tabular}\end{table}
