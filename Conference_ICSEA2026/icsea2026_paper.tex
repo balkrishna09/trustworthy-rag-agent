@@ -1,0 +1,519 @@
+%==============================================================================
+% ICSEA 2026 submission draft
+% "Trustworthy RAG: An Evaluation Agent for Detecting Misinformation and
+%  Knowledge Poisoning in Generative AI Systems"
+%
+% NOTE ON TEMPLATE: This draft uses IEEEtran (conference mode), which is very
+% close to the IARIA format. Before submission, download the official IARIA
+% paper template from the ICSEA 2026 site and confirm margins/heading style.
+% Page target: 6 pages (up to 4 extra pages allowed at additional cost).
+%==============================================================================
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+\begin{document}
+
+\title{Trustworthy RAG: An Evaluation Agent for Detecting Misinformation and
+Knowledge Poisoning in Generative AI Systems}
+
+% TODO: confirm author block, affiliations, and emails before submission.
+\author{
+\IEEEauthorblockN{Balkrishna Giri}
+\IEEEauthorblockA{\textit{Faculty of Information Technology and Communication Sciences} \\
+\textit{Tampere University}\\
+Tampere, Finland \\
+balkrishna.giri@tuni.fi}
+\and
+\IEEEauthorblockN{[Supervisor Name]}
+\IEEEauthorblockA{\textit{Faculty of Information Technology and Communication Sciences} \\
+\textit{Tampere University}\\
+Tampere, Finland \\
+[supervisor email]}
+}
+
+\maketitle
+
+\begin{abstract}
+Retrieval-Augmented Generation (RAG) improves large language model (LLM)
+reliability by grounding responses in external knowledge, yet RAG architectures
+inherently trust their retrieval output, creating a \emph{Security--Reliability
+Gap}: high semantic relevance does not guarantee factual truth. Adversaries
+exploit this through \emph{knowledge poisoning}---injecting malicious documents
+into the corpus to induce targeted misinformation. We propose an autonomous
+\emph{Evaluation Agent} that operates as defensive middleware in the RAG
+pipeline, combining Natural Language Inference (NLI) for factual verification, a
+five-signal poison detector with relevance-weighted aggregation, and a composite
+\emph{Trust Index} $T = 0.4\,F + 0.35\,C + 0.25\,(1-P)$ augmented with a
+non-linear dampener for high-contamination contexts. On TruthfulQA with
+Llama~3.3~70B, the agent reaches 91\% accuracy and 100\% precision (a +7\%
+improvement over a naive always-trust baseline); instruction injection is
+detected at 100\% recall, whereas entity-swap and subtle in-place edits remain
+near-undetectable---an architectural limit of surface-signal detection. A
+$2\times2$ LLM\,$\times$\,embedding study shows the Trust Index is
+LLM-dependent: Qwen~3.5~35B underperforms the baseline by 14 points at a fixed
+threshold, yet stays discriminative (ROC-AUC 0.73), and lightweight per-LLM
+calibration recovers much of the gap. Results are stable across repeated runs
+($90.6{\pm}0.5\%$ over five), and detection is retrieval-depth-invariant
+($K{=}3 \equiv K{=}5$). We release the framework, attack generator, and
+reproducible experiments.
+\end{abstract}
+
+\begin{IEEEkeywords}
+retrieval-augmented generation, knowledge poisoning, trustworthy AI, natural
+language inference, misinformation detection, LLM security
+\end{IEEEkeywords}
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+Large language models (LLMs) built on the Transformer architecture
+\cite{vaswani2017attention} have become foundational engines for
+knowledge-intensive applications, but their parametric knowledge is frozen at
+training time and they are prone to \emph{hallucination}---fluent output that is
+factually incorrect \cite{ji2023survey}. Retrieval-Augmented Generation (RAG)
+\cite{lewis2020rag} mitigates both problems by retrieving relevant documents
+from an external corpus and conditioning generation on them.
+
+This grounding introduces a new attack surface: the integrity of the retrieved
+data itself. Standard RAG assumes the knowledge base is benign, but in
+open-world deployments adversaries can inject malicious documents through
+\emph{knowledge poisoning} \cite{zou2024poisoned}. Such documents are crafted to
+maximize retrieval similarity with target queries; once retrieved, they steer
+the LLM toward attacker-chosen misinformation. Poisoning fewer than 0.1\% of a
+corpus can yield attack success rates above 40\% \cite{zou2024poisoned}.
+
+We term the underlying problem the \textbf{Security--Reliability Gap}: RAG
+systems verify neither the truthfulness nor the safety of what they retrieve,
+treating high semantic relevance as a proxy for truth. Existing evaluation
+frameworks such as RAGAS \cite{es2024ragas} and ARES \cite{saadfalcon2024ares}
+measure \emph{faithfulness to context} but not the \emph{integrity of the
+context}. A RAG system that faithfully answers from a poisoned document scores
+well under these metrics while emitting compromised output. Moreover, most
+poisoning defenses are offline corpus-cleaning steps; there is no online,
+autonomous trust layer that operates inside the inference loop.
+
+This paper presents an \emph{Evaluation Agent} that fills this gap. Its
+contributions are:
+\begin{enumerate}
+  \item \textbf{The Trust Index}, a unified security--reliability metric that
+  combines factuality, cross-document consistency, and poison safety, augmented
+  with a non-linear dampener that prevents high factuality from masking
+  contamination.
+  \item A \textbf{multi-signal poison detector} (linguistic, structural,
+  intra-document, cross-document, and semantic-outlier signals) with
+  relevance-weighted aggregation.
+  \item An \textbf{empirical per-strategy characterization} of detection
+  difficulty across four poisoning strategies, reported with bootstrap
+  confidence intervals, revealing the hierarchy injection $\gg$ contradiction
+  $\gg$ subtle $\approx$ entity-swap.
+  \item Evidence that \textbf{NLI-based trust scoring is LLM-dependent}
+  ($2\times2$ factorial), with a threshold-independent (ROC) analysis and a
+  \textbf{per-LLM calibration} procedure that recovers most of the lost
+  performance.
+  \item A \textbf{retrieval-depth-invariance} result ($K{=}3 \equiv K{=}5$)
+  showing the recall ceiling is set by attack difficulty, not retrieval breadth.
+  \item A \textbf{reproducible open implementation} with an adversarial dataset
+  generator and serialized experiment artifacts.
+\end{enumerate}
+
+%==============================================================================
+\section{Background and Related Work}
+%==============================================================================
+\textbf{RAG architectures.} RAG has evolved from naive retrieve-then-generate
+pipelines to modular and agentic systems \cite{gao2024retrieval}. Modular RAG
+treats retriever, generator, and evaluator as interchangeable components;
+Self-RAG \cite{asai2024selfrag} adds ``critic tokens'' for self-reflection,
+though it is unclear whether such self-correction is robust against adversarial
+inputs designed to manipulate the critic.
+
+\textbf{Evaluation.} Retrieval quality is measured with IR metrics such as
+Recall@$k$ and MRR \cite{karpukhin2020dense}, which capture relevance but not
+safety: a poisoned document engineered to be highly relevant scores perfectly.
+Generation quality has moved from n-gram overlap to factuality-oriented
+measures. TruthfulQA \cite{lin2022truthfulqa} targets imitative falsehoods, and
+the TRUE benchmark \cite{honovich2022true} standardizes factual-consistency
+evaluation using NLI. RAGAS \cite{es2024ragas} and ARES \cite{saadfalcon2024ares}
+use LLMs as judges of faithfulness and relevance but do not assess corpus
+integrity.
+
+\textbf{Attacks and defenses.} Indirect prompt injection embeds malicious
+instructions into retrievable content \cite{greshake2023indirect}. PoisonedRAG
+\cite{zou2024poisoned} formalizes knowledge poisoning of the inference corpus.
+On the defense side, NLI-based verification treats a retrieved document as
+premise and the answer as hypothesis to quantify consistency
+\cite{shuster2021retrieval}. Our work differs by unifying factual verification
+\emph{and} poison detection into a single interpretable score that operates
+online, and by characterizing where such surface-signal detection succeeds and
+fails.
+
+%==============================================================================
+\section{The Evaluation Agent}
+%==============================================================================
+The Evaluation Agent is defensive middleware positioned between retrieval and
+the final trust decision (Fig.~\ref{fig:arch}). It orchestrates three modules:
+an NLI verifier, a poison detector, and a Trust Index calculator, and emits a
+numeric trust score, a categorical trust level, and human-readable warnings.
+
+\begin{figure*}[t]
+\centering
+\resizebox{0.92\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.5cm and 1.4cm,
+    box/.style={rectangle, draw=black!70, rounded corners=4pt,
+                minimum width=3.0cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    mod/.style={rectangle, draw=black!70, rounded corners=4pt, fill=blue!10,
+                minimum width=3.2cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    out/.style={rectangle, draw=black!70, rounded corners=4pt, fill=green!12,
+                minimum width=3.2cm, minimum height=0.85cm,
+                text centered, align=center, font=\small},
+    arr/.style={-Stealth, thick, black!60}
+]
+    \node[box, fill=blue!15, minimum width=5.0cm]  (inp)   {Input: query, answer, docs, scores, embeddings};
+    \node[mod, below=1.0cm of inp, xshift=-3.6cm]  (nli)   {NLI Verifier};
+    \node[mod, below=1.0cm of inp]                  (pois)  {Poison Detector};
+    \node[mod, below=1.0cm of inp, xshift=3.6cm]   (cons)  {Consistency Estimator};
+    \node[box, fill=orange!15, below=1.0cm of pois, minimum width=3.4cm] (trust) {Trust Index Calculator};
+    \node[out, below=1.0cm of trust, minimum width=4.6cm] (result) {EvaluationResult (score, level, warnings)};
+    \draw[arr] (inp.south) -- ++(0,-0.3) -| (nli.north);
+    \draw[arr] (inp.south) -- (pois.north);
+    \draw[arr] (inp.south) -- ++(0,-0.3) -| (cons.north);
+    \draw[arr] (nli.south)  -- ++(0,-0.3) -| (trust.north);
+    \draw[arr] (pois.south) -- (trust.north);
+    \draw[arr] (cons.south) -- ++(0,-0.3) -| (trust.north);
+    \draw[arr] (trust) -- (result);
+\end{tikzpicture}}
+\caption{Evaluation Agent architecture. Three parallel modules feed the Trust
+Index calculator, which produces an interpretable trust verdict for each
+generated response.}
+\label{fig:arch}
+\end{figure*}
+
+\subsection{Factual Verification via NLI}
+The NLI verifier uses \texttt{facebook/bart-large-mnli} as a sequence
+classifier. For each retrieved document (premise) and the generated answer
+(hypothesis) it produces entailment, neutral, and contradiction probabilities.
+The factuality score $S_{\text{factuality}}$ aggregates entailment over
+documents with a meaningful entailment signal; when none exists, an inconclusive
+baseline of $0.5$ is returned. This entailment-focused design is motivated by an
+empirical observation: \texttt{bart-large-mnli} assigns near-maximal
+contradiction ($\approx0.99$) to \emph{both} genuine contradictions and merely
+unrelated text, so using raw contradiction as a negative signal would
+systematically penalize off-topic but benign documents. Strong negative signals
+are therefore reserved for the dedicated poison-detection pathway.
+
+\subsection{Multi-Signal Poison Detection}
+The poison detector combines five independent signals per document:
+(1)~\emph{linguistic patterns} (instruction-override phrases, contradiction
+markers); (2)~\emph{structural anomalies} (excessive uppercase, suspicious
+repetition); (3)~\emph{intra-document consistency} (NLI between the first and
+second halves of a document); (4)~\emph{cross-document consistency} (pairwise
+contradiction checks, scoped so a single poisoned document cannot inflate the
+poison probability of clean neighbors); and (5)~\emph{semantic-outlier analysis}
+(embedding deviation from the batch centroid). When retrieval scores are
+available, document-level probabilities are combined with relevance weighting,
+\begin{equation}
+P_{\text{overall}} = \sum_{i=1}^{k} w_i\,P_i,
+\qquad w_i = \frac{s_i}{\sum_j s_j},
+\end{equation}
+where $s_i$ is the retrieval similarity of document $i$. This prevents
+low-relevance suspicious neighbors from dominating the batch verdict.
+
+\subsection{The Trust Index}
+The Trust Index $T\in[0,1]$ is a weighted combination of three components:
+\begin{equation}
+\label{eq:trust}
+T = \alpha\,S_{\text{factuality}} + \beta\,S_{\text{consistency}}
+    + \gamma\,(1 - P_{\text{poison}}),
+\end{equation}
+with default weights $\alpha{=}0.40$, $\beta{=}0.35$, $\gamma{=}0.25$
+($\alpha{+}\beta{+}\gamma{=}1$). The weights reflect signal reliability:
+NLI entailment (factuality) is the most precise, cross-document agreement
+(consistency) a strong corpus-integrity proxy, and heuristic poison signals are
+weighted lowest to limit false-positive influence.
+
+\textbf{Non-linear dampener.} A purely linear $T$ fails under high
+contamination: if the LLM ignores a poisoned passage and answers from the
+legitimate part, factuality and consistency stay high while $P_{\text{poison}}$
+is large. Because $\gamma{=}0.25$, the poison term can reduce $T$ by at most
+$0.25$, so $T$ can exceed the threshold $\tau{=}0.5$ despite $P_{\text{poison}}
+{=}0.9$. We therefore apply a multiplicative dampener when
+$P_{\text{poison}}>0.70$:
+\begin{equation}
+\label{eq:damp}
+d(P) =
+\begin{cases}
+1.0 & P \le 0.70\\[2pt]
+1.0 - 0.4\,\dfrac{P-0.70}{0.30} & P > 0.70
+\end{cases}
+\qquad T_{\text{final}} = T\cdot d(P).
+\end{equation}
+The dampener is continuous at the threshold ($d(0.70){=}1$), bounded
+($d(1.0){=}0.6$, i.e.\ at most $-40\%$), and proportional to contamination
+confidence. For the masking example above ($T{=}0.59$, $P{=}0.9$),
+$d(0.9){=}0.733$ gives $T_{\text{final}}{=}0.43<\tau$, correctly flagging the
+response. A secondary modifier mildly reduces $T$ when the best retrieval
+similarity falls below $0.30$ (low-confidence retrieval). The final score maps
+to four trust levels (HIGH/MEDIUM/LOW/VERY~LOW); the binary decision uses
+$\tau{=}0.5$.
+
+\textbf{LLM dependency.} Because $S_{\text{factuality}}$ is an NLI entailment
+score against the generated answer, it depends on \emph{generation style}, not
+only content. Hedged prefixes (e.g., ``\emph{Based on the provided
+context\dots}'') lower entailment and thus $T$, even for correct answers. This
+makes $\tau$ and the weights effectively LLM-specific hyperparameters
+(Section~\ref{sec:grid}).
+
+%==============================================================================
+\section{Experimental Setup}
+%==============================================================================
+\textbf{Datasets.} We use two public benchmarks. \emph{TruthfulQA}
+\cite{lin2022truthfulqa} documents are formatted as ``question\,+\,best
+answer'' ($\approx$20--30 words); its counterintuitive correct answers make it a
+realistic poisoning testbed. \emph{FEVER} \cite{thorne2018fever} documents are
+enriched to ``question\,+\,verdict\,+\,claim'' ($\approx$30--40 words); bare
+claims of 8--12 words caused $\sim$70\% of factuality scores to fall back to the
+inconclusive $0.5$ baseline, motivating the enrichment.
+
+\textbf{Protocol.} Each run has two parts: 50 clean queries (Part~A) and the
+same 50 queries against a corpus with 30\% of documents poisoned (Part~B), for
+100 samples per run. We evaluate four rule-based poisoning strategies:
+\emph{contradiction} (appends a contradicting statement), \emph{instruction
+injection} (appends an override directive), \emph{entity swap} (in-place
+replacement of entities/numbers, leaving no appended artifacts), and
+\emph{subtle manipulation} (false qualifiers/hedging). A \emph{mixed} setting
+assigns strategies randomly across poisoned documents.
+
+\textbf{Models and metrics.} Documents are embedded with
+\texttt{all-MiniLM-L6-v2} \cite{reimers2019sentence} (384-d) or
+\texttt{snowflake-arctic-embed2} (1024-d), indexed in FAISS (cosine, top-$K$).
+Generation uses \texttt{llama3.3:70b} (primary) or \texttt{qwen3.5:35b}; NLI
+runs on CPU. We report accuracy, precision, recall, F1, and \emph{trust score
+separation} $\Delta = \bar{T}_{\text{clean}} - \bar{T}_{\text{poisoned}}$, a
+threshold-independent measure of discriminability. The comparison point is a
+\emph{naive always-trust} RAG that never flags; under 30\% poisoning its
+accuracy ($\approx$85\%) reflects class imbalance, not detection, so $\Delta$
+and F1 are the informative metrics. We add 95\% confidence intervals: Wilson
+intervals for proportions and a percentile bootstrap ($B{=}20\,000$) for F1.
+
+%==============================================================================
+\section{Results}
+%==============================================================================
+\subsection{Detection Performance and Per-Strategy Hierarchy}
+On the primary TruthfulQA mixed run (Llama~3.3~70B + MiniLM, $K{=}5$) the agent
+attains 91\% accuracy (95\% CI 83.8--95.2\%), 100\% precision (zero false
+positives), 40\% recall (19.8--64.3\%), F1 57.1\% (25.0--80.0\%), and
+$\Delta{=}0.225$---a +7\% accuracy gain over the naive baseline. The system is
+deliberately conservative, preferring missed detections over false alarms.
+
+Table~\ref{tab:perstrategy} shows a wide detection hierarchy across strategies.
+Instruction injection is essentially solved (100\% recall [79.6--100\%], F1
+96.8\%, $\Delta{=}0.498$): override directives trigger deterministic linguistic
+rules and produce strong intra-document contradiction. Contradiction is
+moderate (53.3\% recall [30.1--75.2\%]). Subtle manipulation is weak (20\%
+[7.0--45.2\%]) and entity swap is undetected (0\% [0--20.4\%], $\Delta{=}0.053$):
+these in-place edits leave no surface artifacts. Because each run has only 15
+poisoned samples, recall CIs are wide; we report them to avoid overstating the
+precision of the ranking. The ordering itself, however, is consistent and
+mechanistically explained.
+
+\begin{table}[t]
+\caption{Per-strategy detection on TruthfulQA (100 samples each;
+Llama~3.3~70B + all-MiniLM-L6-v2, $K{=}5$).}
+\label{tab:perstrategy}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Strategy & Acc. & Prec. & Recall & F1 & $\Delta$ \\
+\midrule
+Instruction injection & 99\% & 93.8\% & 100\%  & 96.8\% & 0.498 \\
+Contradiction         & 92\% & 88.9\% & 53.3\% & 66.7\% & 0.311 \\
+Subtle manipulation   & 88\% & 100\%  & 20.0\% & 33.3\% & 0.149 \\
+Entity swap           & 85\% & ---    & 0\%    & 0\%    & 0.053 \\
+\midrule
+Mixed                 & 91\% & 100\%  & 40.0\% & 57.1\% & 0.225 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dampener explains the extremes: poisoned injection contexts reach mean
+$P_{\text{poison}}\approx0.99$, consistently activating Eq.~\ref{eq:damp},
+whereas entity-swap contexts stay near $0.32$---below the $0.70$ trigger---so
+trust scores barely move.
+
+\subsection{LLM and Embedding Sensitivity}
+\label{sec:grid}
+Table~\ref{tab:grid} reports a $2\times2$ factorial study ($K{=}3$). Two findings
+stand out. First, \emph{LLM choice dominates}: both Llama configurations are
+identical (91\%, 100\% precision) regardless of embedding model, while both Qwen
+configurations \emph{underperform the naive baseline} by 14 points (71\%) with
+precision collapsing to 25--28\%. The cause is generation style: Qwen's hedged,
+verbose answers lower NLI entailment, depressing the mean clean trust score to
+$\approx$0.64 (vs.\ $\approx$0.83 for Llama) and producing 21--23 false
+positives out of 85 clean samples. Second, embedding dimensionality is
+near-irrelevant for a concise-output LLM. These results confirm that $\tau{=}0.5$
+is implicitly calibrated for Llama and that \emph{per-LLM calibration} is
+required before deploying with a different generator.
+
+\begin{table}[t]
+\caption{$2\times2$ LLM\,$\times$\,embedding grid (TruthfulQA, 100 samples,
+mixed, $K{=}3$).}
+\label{tab:grid}
+\centering
+\small
+\begin{tabular}{llccccc}
+\toprule
+LLM & Embedding & Acc. & Prec. & Rec. & F1 & $\Delta$ \\
+\midrule
+Llama 3.3 70B & MiniLM    & 91\% & 100\%  & 40.0\% & 57.1\% & 0.240 \\
+Llama 3.3 70B & Snowflake & 91\% & 100\%  & 40.0\% & 57.1\% & 0.188 \\
+Qwen 3.5 35B  & MiniLM    & 71\% & 25.0\% & 46.7\% & 32.6\% & 0.161 \\
+Qwen 3.5 35B  & Snowflake & 71\% & 28.1\% & 60.0\% & 38.3\% & 0.199 \\
+\midrule
+\multicolumn{2}{l}{Naive always-trust} & 85\% & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Robustness: Variance, Threshold-Independence, and Calibration}
+\label{sec:robust}
+\input{results_tables.tex}
+\input{roc_figure.tex}
+
+\textbf{Run-to-run variance.} We re-ran each configuration 2--5 times with
+independent generations. Despite LLM sampling stochasticity, detection metrics
+are highly stable (Table~\ref{tab:variance}): the primary mixed configuration
+scores $90.6{\pm}0.5\%$ accuracy and $56.1{\pm}1.3\%$ F1 over five repeats, and
+injection is invariant at $99.0{\pm}0.0\%$. The low variance indicates that the
+agent's verdicts are driven by the retrieved evidence rather than by the surface
+wording of any single generation.
+
+\textbf{Threshold-independent performance.} The fixed $\tau{=}0.5$ operating
+point understates the Trust Index. Pooling the mixed-strategy runs, it attains
+ROC-AUC $0.81$ (Llama) and $0.73$ (Qwen) (Fig.~\ref{fig:roc}; average precision
+$0.67$ and $0.51$ at a $0.15$ positive rate). Qwen's AUC of $0.73$---well above
+chance---shows that its weak accuracy at $\tau{=}0.5$ is a \emph{thresholding}
+artifact, not an absence of signal.
+
+\textbf{Per-LLM calibration.} Fitting $\tau$ on clean scores only (10th
+percentile of a held-out clean split) and evaluating on disjoint clean and
+poisoned samples (Table~\ref{tab:calib}) recovers much of the gap: Qwen accuracy
+rises from $65.5\%$ to $74.5\%$ and precision from $38\%$ to $51\%$. The
+calibrated thresholds move in \emph{opposite} directions
+($\tau^\star_{\text{Llama}}{=}0.71$, $\tau^\star_{\text{Qwen}}{=}0.43$),
+directly confirming that $\tau$ is an LLM-specific hyperparameter; for Llama,
+calibration trades precision for recall (F1 $0.57{\to}0.64$). Absolute
+accuracies in Table~\ref{tab:calib} are lower than in Table~\ref{tab:variance}
+because the calibration split is deliberately poison-enriched; the meaningful
+comparison is before vs.\ after calibration on the same split.
+
+\subsection{Retrieval Depth and Overhead}
+Increasing retrieval depth from $K{=}3$ to $K{=}5$ leaves the mixed-strategy
+outcome \emph{identical} (91\% accuracy, 100\% precision, 40\% recall, F1
+57.1\%; $\Delta$ changes $0.240\!\to\!0.225$, within noise). The undetected
+contexts are entity-swap and subtle attacks that leave no textual signal at any
+depth, so additional documents add no poison evidence. Detection is thus
+\emph{retrieval-depth-invariant}, and the 40\% recall ceiling is set by attack
+difficulty, not retrieval breadth; $K{=}3$ is preferable, achieving the same
+result at roughly half the NLI cost ($\sim$9 vs.\ $\sim$20 calls per batch).
+
+The evaluation adds $\approx$14.7\,s per sample ($\approx$17.2\,s end to end),
+an $\approx$17$\times$ overhead over baseline RAG, dominated by up to 20 CPU NLI
+forward passes at $K{=}5$. This suits high-stakes batch settings (compliance,
+document verification, medical review) rather than interactive use; GPU
+inference is projected to cut evaluation below 2\,s.
+
+\subsection{Cross-Dataset Generalization}
+On FEVER, the full 100-sample run reaches 73\% accuracy and \emph{underperforms}
+the 85\% baseline by 12 points, with separation collapsing to $\Delta{=}0.035$.
+Although enrichment supplies adequate NLI context, the clean/poisoned trust
+distributions overlap, indicating that the Trust Index does not generalize
+out-of-the-box and requires dataset-specific calibration. We report this
+negative result explicitly; it bounds the external validity of the TruthfulQA
+findings and motivates the per-LLM/per-domain calibration discussed below.
+
+%==============================================================================
+\section{Discussion}
+%==============================================================================
+\textbf{An architectural limit, not a tuning failure.} Entity-swap and subtle
+attacks change facts in place without textual artifacts. No amount of threshold
+tuning, reweighting, or deeper retrieval recovers them (Sections V-A, V-C);
+detecting them requires external world knowledge (e.g., verifying an
+entity--attribute pair against a structured KB). The 40\% mixed-strategy recall
+ceiling is therefore intrinsic to surface-signal detection.
+
+\textbf{Class imbalance makes accuracy misleading.} A do-nothing baseline scores
+85\% under 30\% poisoning. The agent's value is better seen in 100\% precision
+and the per-strategy separation range (0.053--0.498), which indicates which
+attack families are deployable under the current design and which need new
+mechanisms.
+
+\textbf{False-positive spillover.} A clean query that retrieves a poisoned
+neighbor receives elevated poison probability. This is security-correct (the
+environment is contaminated) but costs precision; relevance-weighted aggregation
+mitigates but does not eliminate it when a poisoned document ranks highly.
+
+\textbf{Threats to validity.} Attacks are rule-based rather than
+gradient-optimized; sample sizes are modest (15 poisoned per run, hence wide
+recall CIs); results depend on a specific cluster/model stack; and ground-truth
+labels are index-aligned rather than retrieval-grounded. The FEVER result shows
+these caveats matter for generalization.
+
+%==============================================================================
+\section{Conclusion and Future Work}
+%==============================================================================
+We presented an autonomous Evaluation Agent that adds an interpretable trust
+layer to RAG by unifying NLI-based factual verification, multi-signal poison
+detection, and a composite Trust Index with a non-linear dampener. It detects
+overt poisoning reliably (injection 100\% recall, 91\% mixed accuracy, 100\%
+precision on TruthfulQA), while we identify and explain a hard limit against
+in-place edits, demonstrate that NLI-based trust is LLM-dependent, and show
+detection is retrieval-depth-invariant. The honest FEVER result bounds
+generalization.
+
+Priorities for future work are: (i)~evaluation against gradient-optimized
+collision attacks \cite{zou2024poisoned}; (ii)~per-LLM Trust Index calibration
+(fitting $\tau$ to the clean-score distribution); (iii)~semantic world-knowledge
+integration (e.g., Wikidata lookups) to close the entity-swap gap;
+(iv)~GPU-accelerated, streaming evaluation for real-time use; and (v)~true
+attack-success-rate measurement of misinformation \emph{adoption}, not just
+detection. The framework, adversarial dataset generator, and serialized
+experiments are released to support reproducibility.
+
+%==============================================================================
+% References (manual IEEE-style bibliography for a self-contained draft;
+% switch to BibTeX/biblatex with reference.bib if preferred).
+%==============================================================================
+\begin{thebibliography}{00}
+\bibitem{vaswani2017attention} A. Vaswani \emph{et al.}, ``Attention is all you need,'' in \emph{Adv. Neural Inf. Process. Syst. (NeurIPS)}, vol.~30, 2017.
+\bibitem{ji2023survey} Z. Ji \emph{et al.}, ``Survey of hallucination in natural language generation,'' \emph{ACM Comput. Surv.}, vol.~55, no.~12, pp.~1--38, 2023.
+\bibitem{lewis2020rag} P. Lewis \emph{et al.}, ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' in \emph{Adv. Neural Inf. Process. Syst. (NeurIPS)}, vol.~33, 2020, pp.~9459--9474.
+\bibitem{zou2024poisoned} W. Zou, R. Geng, B. Wang, and J. Jia, ``PoisonedRAG: Knowledge poisoning attacks to retrieval-augmented generation of large language models,'' in \emph{Proc. 33rd USENIX Security Symp.}, 2024.
+\bibitem{es2024ragas} S. Es, J. James, L. Espinosa-Anke, and S. Schockaert, ``RAGAS: Automated evaluation of retrieval augmented generation,'' in \emph{Proc. 18th Conf. Eur. Chapter ACL (Demos)}, 2024, pp.~150--158.
+\bibitem{saadfalcon2024ares} J. Saad-Falcon, O. Khattab, C. Potts, and M. Zaharia, ``ARES: An automated evaluation framework for retrieval-augmented generation systems,'' in \emph{Proc. NAACL}, 2024.
+\bibitem{gao2024retrieval} Y. Gao \emph{et al.}, ``Retrieval-augmented generation for large language models: A survey,'' \emph{arXiv:2312.10997}, 2024.
+\bibitem{asai2024selfrag} A. Asai, Z. Wu, Y. Wang, A. Sil, and H. Hajishirzi, ``Self-RAG: Learning to retrieve, generate, and critique through self-reflection,'' in \emph{Int. Conf. Learn. Represent. (ICLR)}, 2024.
+\bibitem{karpukhin2020dense} V. Karpukhin \emph{et al.}, ``Dense passage retrieval for open-domain question answering,'' in \emph{Proc. EMNLP}, 2020, pp.~6769--6781.
+\bibitem{lin2022truthfulqa} S. Lin, J. Hilton, and O. Evans, ``TruthfulQA: Measuring how models mimic human falsehoods,'' in \emph{Proc. 60th Annu. Meeting ACL}, 2022, pp.~3214--3252.
+\bibitem{honovich2022true} O. Honovich \emph{et al.}, ``TRUE: Re-evaluating factual consistency evaluation,'' in \emph{Proc. NAACL}, 2022.
+\bibitem{greshake2023indirect} K. Greshake \emph{et al.}, ``Not what you've signed up for: Compromising real-world LLM-integrated applications with indirect prompt injection,'' in \emph{Proc. 16th ACM Workshop Artif. Intell. Secur.}, 2023, pp.~79--90.
+\bibitem{shuster2021retrieval} K. Shuster, S. Poff, M. Chen, D. Kiela, and J. Weston, ``Retrieval augmentation reduces hallucination in conversation,'' in \emph{Findings of ACL: EMNLP}, 2021, pp.~3784--3803.
+\bibitem{thorne2018fever} J. Thorne, A. Vlachos, C. Christodoulopoulos, and A. Mittal, ``FEVER: A large-scale dataset for fact extraction and verification,'' in \emph{Proc. NAACL}, 2018.
+\bibitem{reimers2019sentence} N. Reimers and I. Gurevych, ``Sentence-BERT: Sentence embeddings using Siamese BERT-networks,'' in \emph{Proc. EMNLP}, 2019.
+\end{thebibliography}
+
+\end{document}
