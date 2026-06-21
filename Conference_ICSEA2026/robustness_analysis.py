@@ -14,6 +14,7 @@ import numpy as np
 
 random = np.random.default_rng(42)
 OUT = "Conference_ICSEA2026"
+LLMS = ["llama3.3:70b", "qwen3.5:35b", "mistral:7b-instruct"]  # 3rd LLM added (skipped if no data yet)
 
 # ---------------------------------------------------------------- load & label
 def strategy_of(name, cfg):
@@ -144,7 +145,7 @@ def pool(strat, llm):
 print("\n=== 2) THRESHOLD-INDEPENDENT (ROC-AUC, AP) on pooled mixed runs ===")
 auc_table = {}
 roc_curves = {}
-for llm in ["llama3.3:70b", "qwen3.5:35b"]:
+for llm in LLMS:
     sc, tr, ng = pool("mixed", llm)
     if sc is None: continue
     auc = roc_auc(sc, tr); ap = average_precision(sc, tr)
@@ -156,7 +157,7 @@ for llm in ["llama3.3:70b", "qwen3.5:35b"]:
 # ---------------------------------------------------------------- 3) CALIBRATION
 print("\n=== 3) PER-LLM THRESHOLD CALIBRATION (fit tau on clean only) ===")
 calib_rows = {}
-for llm in ["llama3.3:70b", "qwen3.5:35b"]:
+for llm in LLMS:
     g = [r for r in canon if r["strat"]=="mixed" and r["llm"]==llm and r["ds"]=="truthfulqa"]
     if not g: continue
     trust = np.concatenate([r["trust"] for r in g]); truth = np.concatenate([r["truth"] for r in g])
@@ -195,8 +196,8 @@ lines.append("% --- Auto-generated: per-LLM calibration ---")
 lines.append("\\begin{table}[t]\\caption{Per-LLM threshold calibration (TruthfulQA mixed, $K{=}5$). $\\tau$ fit on clean scores only; evaluated on held-out clean + poisoned. ROC-AUC is threshold-independent.}\\label{tab:calib}\\centering\\small")
 lines.append("\\begin{tabular}{llccccc}\\toprule")
 lines.append("LLM & $\\tau$ & Acc. & Prec. & Rec. & F1 & ROC-AUC \\\\\\midrule")
-disp = {"llama3.3:70b":"Llama 3.3 70B","qwen3.5:35b":"Qwen 3.5 35B"}
-for llm in ["llama3.3:70b","qwen3.5:35b"]:
+disp = {"llama3.3:70b":"Llama 3.3 70B","qwen3.5:35b":"Qwen 3.5 35B","mistral:7b-instruct":"Mistral 7B Instruct"}
+for llm in LLMS:
     if llm not in calib_rows: continue
     t0, m0, tc, mc, _ = calib_rows[llm]
     auc = auc_table.get(llm,(float('nan'),))[0]
@@ -212,7 +213,7 @@ fig = []
 fig.append("% --- Auto-generated ROC figure (requires \\usepackage{pgfplots}) ---")
 fig.append("\\begin{figure}[t]\\centering\\begin{tikzpicture}")
 fig.append("\\begin{axis}[width=\\columnwidth,height=0.78\\columnwidth,xlabel={False positive rate},ylabel={True positive rate},xmin=0,xmax=1,ymin=0,ymax=1,legend pos=south east,grid=both,font=\\small]")
-for llm,style in [("llama3.3:70b","thick"),("qwen3.5:35b","thick,dashed")]:
+for llm,style in [("llama3.3:70b","thick"),("qwen3.5:35b","thick,dashed"),("mistral:7b-instruct","thick,dash dot")]:
     if llm in roc_curves:
         auc = auc_table[llm][0]
         fig.append(f"\\addplot[{style}] coordinates {{{coords(roc_curves[llm])}}};")

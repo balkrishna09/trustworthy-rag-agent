@@ -61,12 +61,13 @@ Llama~3.3~70B, the agent reaches 91\% accuracy and 100\% precision (a +7\%
 improvement over a naive always-trust baseline); instruction injection is
 detected at 100\% recall, whereas entity-swap and subtle in-place edits remain
 near-undetectable---an architectural limit of surface-signal detection. A
-$2\times2$ LLM\,$\times$\,embedding study shows the Trust Index is
-LLM-dependent: Qwen~3.5~35B underperforms the baseline by 14 points at a fixed
-threshold, yet stays discriminative (ROC-AUC 0.73), and lightweight per-LLM
-calibration recovers much of the gap. Results are stable across repeated runs
-($90.6{\pm}0.5\%$ over five), and detection is retrieval-depth-invariant
-($K{=}3 \equiv K{=}5$). We release the framework, attack generator, and
+study across \emph{three} LLMs shows the Trust Index is LLM-dependent, and that
+generation \emph{style} matters more than size: a 7B model (87\% accuracy)
+outperforms a 35B model (69\%) whose hedged outputs trigger systematic false
+positives. The score stays discriminative for every model (ROC-AUC 0.73--0.81),
+and lightweight per-LLM threshold calibration restores baseline-competitive
+accuracy. Results are stable across repeated runs ($90.6{\pm}0.5\%$ over five),
+and detection is retrieval-depth-invariant ($K{=}3 \equiv K{=}5$). We release the framework, attack generator, and
 reproducible experiments.
 \end{abstract}
 
@@ -118,10 +119,10 @@ contributions are:
   difficulty across four poisoning strategies, reported with bootstrap
   confidence intervals, revealing the hierarchy injection $\gg$ contradiction
   $\gg$ subtle $\approx$ entity-swap.
-  \item Evidence that \textbf{NLI-based trust scoring is LLM-dependent}
-  ($2\times2$ factorial), with a threshold-independent (ROC) analysis and a
-  \textbf{per-LLM calibration} procedure that recovers most of the lost
-  performance.
+  \item Evidence that \textbf{NLI-based trust scoring is LLM-dependent} across
+  \textbf{three LLMs}---governed by generation style, not model size---with a
+  threshold-independent (ROC) analysis and a \textbf{per-LLM calibration}
+  procedure in which each model requires a distinct decision threshold.
   \item A \textbf{retrieval-depth-invariance} result ($K{=}3 \equiv K{=}5$)
   showing the recall ceiling is set by attack difficulty, not retrieval breadth.
   \item A \textbf{reproducible open implementation} with an adversarial dataset
@@ -404,22 +405,24 @@ wording of any single generation.
 
 \textbf{Threshold-independent performance.} The fixed $\tau{=}0.5$ operating
 point understates the Trust Index. Pooling the mixed-strategy runs, it attains
-ROC-AUC $0.81$ (Llama) and $0.73$ (Qwen) (Fig.~\ref{fig:roc}; average precision
-$0.67$ and $0.51$ at a $0.15$ positive rate). Qwen's AUC of $0.73$---well above
-chance---shows that its weak accuracy at $\tau{=}0.5$ is a \emph{thresholding}
-artifact, not an absence of signal.
+ROC-AUC $0.81$ (Llama), $0.79$ (Mistral~7B), and $0.73$ (Qwen)
+(Fig.~\ref{fig:roc}). All three sit well above chance, so Qwen's weak accuracy
+at $\tau{=}0.5$ is a \emph{thresholding} artifact, not an absence of signal.
 
-\textbf{Per-LLM calibration.} Fitting $\tau$ on clean scores only (10th
-percentile of a held-out clean split) and evaluating on disjoint clean and
-poisoned samples (Table~\ref{tab:calib}) recovers much of the gap: Qwen accuracy
-rises from $65.5\%$ to $74.5\%$ and precision from $38\%$ to $51\%$. The
-calibrated thresholds move in \emph{opposite} directions
-($\tau^\star_{\text{Llama}}{=}0.71$, $\tau^\star_{\text{Qwen}}{=}0.43$),
-directly confirming that $\tau$ is an LLM-specific hyperparameter; for Llama,
-calibration trades precision for recall (F1 $0.57{\to}0.64$). Absolute
-accuracies in Table~\ref{tab:calib} are lower than in Table~\ref{tab:variance}
-because the calibration split is deliberately poison-enriched; the meaningful
-comparison is before vs.\ after calibration on the same split.
+\textbf{Per-LLM calibration.} We also add a third LLM, Mistral~7B~Instruct, which reaches $87\%$ accuracy---far
+above Qwen~3.5~35B ($69\%$) despite being five times smaller. This indicates the
+Trust Index's performance is governed by generation \emph{style} (Qwen's hedged
+phrasing depresses NLI entailment) rather than model scale. Fitting $\tau$ on
+clean scores only (10th percentile of a held-out clean split) and evaluating on
+disjoint clean and poisoned samples (Table~\ref{tab:calib}) restores
+baseline-competitive accuracy---e.g.\ Qwen rises from $65.5\%$ to $74.5\%$ by
+cutting false positives. Crucially, the three LLMs require three \emph{different}
+optimal thresholds ($\tau^\star{=}0.71$, $0.58$, $0.43$ for Llama, Mistral, and
+Qwen), directly confirming that $\tau$ is an LLM-specific hyperparameter.
+Absolute accuracies in Table~\ref{tab:calib} are lower than in
+Table~\ref{tab:variance} because the calibration split is deliberately
+poison-enriched; the meaningful comparison is before vs.\ after calibration on
+the same split.
 
 \subsection{Retrieval Depth and Overhead}
 Increasing retrieval depth from $K{=}3$ to $K{=}5$ leaves the mixed-strategy
