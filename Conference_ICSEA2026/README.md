@@ -28,6 +28,7 @@ Workspace for turning the master's thesis into a conference paper.
 - [x] Full draft written by condensing the thesis (intro, related work, method, setup, results, discussion, conclusion).
 - [x] Confidence intervals computed and embedded (the "light strengthening" achievable now).
 - [x] **Robustness section added** (no LLM needed): multi-run variance (90.6%±0.5% over 5 repeats), ROC/AUC (Llama 0.81 / Qwen 0.73), and per-LLM calibration that recovers Qwen (65.5%→74.5%). See `robustness_analysis.py`.
+- [x] **3rd LLM run via live FARMI** (Mistral 7B Instruct, 100 samples): 87% acc, ROC-AUC 0.79 — beats 35B Qwen (69%), showing *style > size*. Folded into the paper (3 LLMs, 3 distinct optimal thresholds 0.71/0.58/0.43).
 - [ ] **Supervisor sign-off** (send `SUPERVISOR_EMAIL.md`) — fill in name/email first.
 - [ ] Fill placeholders in `icsea2026_paper.tex` (author block, supervisor).
 - [ ] Confirm official IARIA template vs. IEEEtran; adjust if needed.
