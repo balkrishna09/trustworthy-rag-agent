@@ -48,8 +48,8 @@ KNOWN_EMBEDDING_MODELS = {
 }
 
 MODEL_DESCRIPTIONS = {
-    "llama3.3:70b":                          "Llama 3.3 (70B) — thesis default, strong instruction following",
-    "qwen3.5:35b":                           "Qwen 3.5 (35B) — thesis 2×2 comparison target",
+    "llama3.3:70b":                          "Llama 3.3 (70B) — primary, strong instruction following",
+    "qwen3.5:35b":                           "Qwen 3.5 (35B) — 2×2 comparison target",
     "qwen3.5:9b":                            "Qwen 3.5 (9B) — faster Qwen, good quality/speed balance",
     "qwen3.5:0.8b":                          "Qwen 3.5 (0.8B) — very small, quick smoke-tests only",
     "phi4-reasoning:14b":                    "Phi-4 Reasoning (14B) — step-by-step reasoning",
@@ -105,8 +105,8 @@ def select_models_interactively(pipeline_config: dict) -> dict:
 
     # ── LLM selection ────────────────────────────────────────────────────────
     PRIMARY_LLMS = [
-        ("llama3.3:70b", "Llama 3.3 (70B) — thesis default, strong instruction following [DEFAULT]"),
-        ("qwen3.5:35b",  "Qwen 3.5 (35B) — thesis 2×2 comparison target"),
+        ("llama3.3:70b", "Llama 3.3 (70B) — primary, strong instruction following [DEFAULT]"),
+        ("qwen3.5:35b",  "Qwen 3.5 (35B) — 2×2 comparison target"),
     ]
     current_llm = config.get("LLM_MODEL", "llama3.3:70b")
     primary_llm_ids = {m for m, _ in PRIMARY_LLMS}
@@ -683,7 +683,7 @@ def main():
 
     # --- Auto-generate charts ---
     print("\n" + "=" * 60)
-    print("GENERATING THESIS CHARTS...")
+    print("GENERATING CHARTS...")
     print("=" * 60)
     try:
         from generate_charts import main as generate_charts_main

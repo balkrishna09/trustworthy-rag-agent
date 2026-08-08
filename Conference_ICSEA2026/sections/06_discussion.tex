@@ -1,0 +1,16 @@
+%==============================================================================
+\section{Discussion}
+\label{sec:discussion}
+%==============================================================================
+
+\textbf{An architectural limit, not a tuning failure.} Entity-swap and subtle attacks change facts in place without textual artifacts. No amount of threshold tuning, reweighting, or deeper retrieval recovers them (Sections V-A, V-C); detecting them requires external world knowledge (e.g., verifying an entity-attribute pair against a structured KB). The 40\% mixed-strategy recall ceiling is therefore intrinsic to surface-signal detection. Our secure-coding use case (Section~\ref{sec:usecase}) makes this consequential: the agent blocks injected unsafe advice but not a subtly weakened security recommendation.
+
+\textbf{Class imbalance makes accuracy misleading.} A do-nothing baseline scores 85\% under 30\% poisoning, so the agent's value is better seen in its 100\% precision and the per-strategy separation range (0.053 to 0.498).
+
+\textbf{False-positive spillover.} A clean query that retrieves a poisoned neighbor receives elevated poison probability. This is security-correct (the environment is contaminated) but costs precision; relevance-weighted aggregation mitigates but does not eliminate it when a poisoned document ranks highly.
+
+\textbf{Deployment in the SDLC.} The agent fits as a workflow gate: it can screen a secure-coding knowledge base before indexing and, at $\approx$17\,s per query, act as an asynchronous check in code review or CI rather than in the edit loop, with a human reviewing flagged retrievals for the low-visibility cases it cannot resolve alone.
+
+\textbf{Scope and validity considerations.} Several factors should be considered when interpreting the results. The poisoning strategies are rule-based and cover common attack patterns, but future work should also evaluate stronger optimization-crafted poisoned passages, including collision-style documents \cite{zou2024poisoned,zhong2023poisoning}. This study measures \emph{detection} of poisoned context before generation, while measuring whether the LLM adopts injected misinformation, i.e., attack success rate, requires end-to-end evaluation. The experiments use controlled sample sizes, with 15 poisoned samples per run, and the secure-coding study focuses on one curated domain. The current CPU-based implementation adds about $\approx$17\,s latency, making it more suitable for batch or asynchronous checks than interactive use. Because NLI scores depend on generation style, per-LLM calibration requires a small labeled clean set for each model. The FEVER result further shows that per-domain calibration is important for generalization.
+
+

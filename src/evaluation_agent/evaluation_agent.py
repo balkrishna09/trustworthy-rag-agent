@@ -3,7 +3,7 @@ Evaluation Agent Module
 The main orchestrator that combines NLI verification, poison detection,
 and trust index calculation into a unified evaluation system.
 
-This is the core research component of the thesis - detecting misinformation
+This is the core research component of the project - detecting misinformation
 and knowledge poisoning in RAG systems.
 """
 

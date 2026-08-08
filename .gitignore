@@ -1,3 +1,11 @@
+# --- Project local-only (not committed) ---
+# Supervisor email drafts (private correspondence)
+Conference_ICSEA2026/email_supervisor_draft.md
+# Local build / run artifacts
+Conference_ICSEA2026_overleaf*.zip
+*.log
+Conference_ICSEA2026/_pdfpreview/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
