@@ -1,0 +1,85 @@
+%==============================================================================
+\section{Proposed Approach}
+\label{sec:approach}
+%==============================================================================
+
+\textbf{Threat model.} We assume a black-box knowledge-injection adversary that can insert or modify documents in the retrieval corpus but cannot access the model weights, user prompt, or the Evaluation Agent. The adversary's goal is to make the generator emit attacker-chosen misinformation or unsafe recommendations. This reflects RAG deployments that ingest third-party, web-sourced, or community-contributed content.
+
+The Evaluation Agent is defensive middleware positioned between retrieval and the final trust decision (\rev{Figure}~\ref{fig:arch}). It orchestrates three modules: an NLI verifier, a poison detector, and a Trust Index calculator, and emits a numeric trust score, a categorical trust level, and human-readable warnings. \rev{Operationally, the agent is a two-stage mechanism. The poison detector and the consistency estimator screen the retrieved documents before generation, whereas the NLI verifier runs after generation, using each retrieved document as the premise and the generated answer as the hypothesis. All signals are then fused into a single verdict attached to the response; a deployment can also act on the pre-generation signals alone.}
+
+\begin{figure}[!ht]
+\centering
+\resizebox{0.55\columnwidth}{!}{%
+\begin{tikzpicture}[
+node distance=0.32cm,
+box/.style={rectangle, draw=black!70, rounded corners=3pt,
+minimum width=2.7cm, minimum height=0.62cm,
+text centered, align=center, font=\scriptsize},
+mod/.style={rectangle, draw=black!70, rounded corners=3pt, fill=blue!10,
+minimum width=2.4cm, minimum height=0.62cm,
+text centered, align=center, font=\scriptsize},
+outbox/.style={rectangle, draw=black!70, rounded corners=3pt, fill=green!12,
+minimum width=2.9cm, minimum height=0.62cm,
+text centered, align=center, font=\scriptsize},
+arr/.style={-{Stealth}, thick, black!60}
+]
+\node[box, fill=black!8, minimum width=3.8cm] (inp)
+{Input: query, answer, docs,\ scores, embeddings};
+
+\node[mod, below=0.45cm of inp] (nli) {NLI Verifier};
+\node[mod, below=0.30cm of nli] (pois) {Poison Detector};
+\node[mod, below=0.30cm of pois] (cons) {Consistency Estimator};
+\node[box, fill=orange!15, below=0.45cm of cons, minimum width=2.9cm] (trust)
+{Trust Index\\ Calculator};
+
+\node[outbox, below=0.45cm of trust] (result)
+{EvaluationResult\\ score, level, warnings};
+
+\draw[arr] (inp.south) -- (nli.north);
+\draw[arr] (nli.south) -- (pois.north);
+\draw[arr] (pois.south) -- (cons.north);
+\draw[arr] (cons.south) -- (trust.north);
+\draw[arr] (trust.south) -- (result.north);
+
+\end{tikzpicture}}
+\caption{Processing pipeline of the Evaluation Agent. Color coding: gray denotes input data, blue the three analysis modules, orange the score-fusion step, and green the output verdict.}
+\label{fig:arch}
+\end{figure}
+
+
+% Algorithm 1 (runtime pseudocode) removed to fit the page limit; the per-query
+% procedure is fully specified by Eqs.~(\ref{eq:trust})--(\ref{eq:damp}) and the
+% accompanying text (NLI verify, 5-signal poison detection, weighted fusion,
+% dampener for P>0.70, and a low-confidence-retrieval modifier for max(S)<0.30).
+
+\subsection{Factual Verification via NLI}
+The NLI verifier uses \texttt{facebook/bart-large-mnli} as a sequence classifier. For each retrieved document (premise) and the generated answer (hypothesis) it produces entailment, neutral, and contradiction probabilities. The factuality score $S_{\text{factuality}}$ aggregates entailment over documents with a meaningful entailment signal; when none exists, an inconclusive baseline of $0.5$ is returned. This entailment-focused design is motivated by an empirical observation: \texttt{bart-large-mnli} assigns near-maximal contradiction ($\approx0.99$) to \emph{both} genuine contradictions and merely unrelated text, so using raw contradiction as a negative signal would systematically penalize off-topic but benign documents. Strong negative signals are therefore reserved for the dedicated poison-detection pathway.
+
+\subsection{Multi-Signal Poison Detection}
+The poison detector combines five independent signals per document: (1)~\emph{linguistic patterns} (instruction-override phrases, contradiction markers); (2)~\emph{structural anomalies} (excessive uppercase, suspicious repetition); (3)~\emph{intra-document consistency} (NLI between the first and second halves of a document); (4)~\emph{cross-document consistency} (pairwise contradiction checks, scoped so a single poisoned document cannot inflate the poison probability of clean neighbors); and (5)~\emph{semantic-outlier analysis} (embedding deviation from the batch centroid). When retrieval scores are available, document-level probabilities are combined with relevance weighting,
+\begin{equation}
+P_{\text{overall}} = \sum_{i=1}^{k} w_i\,P_i, \qquad w_i = \frac{s_i}{\sum_j s_j},
+\end{equation}
+where $s_i$ is the retrieval similarity of document $i$. This prevents low-relevance suspicious neighbors from dominating the batch verdict. The linguistic and intra-document signals target overt injections and explicit contradictions; the cross-document and semantic-outlier signals target inconsistent or anomalous insertions; and the structural signal flags formatting artifacts. \rev{The set was derived from the attack surface of the threat model, and each signal is grounded in prior observations: linguistic override patterns follow the payload style of indirect prompt injection} \cite{greshake2023indirect}\rev{; the intra- and cross-document checks instantiate NLI-based consistency evaluation} \cite{maynez2020faithfulness}\cite{honovich2022true}\rev{; and semantic-outlier analysis adapts embedding-space anomaly detection to the retrieved batch, motivated by corpus-poisoning attacks that insert semantically deviant passages} \cite{zhong2023poisoning}. In-place value substitutions that preserve surface form fall, by construction, outside this signal set, a limit we quantify in Section~\ref{sec:usecase}.
+
+\subsection{The Trust Index}
+The Trust Index $T\in[0,1]$ is a weighted combination of three components:
+\begin{equation}
+\label{eq:trust}
+T = \alpha\,S_{\text{factuality}} + \beta\,S_{\text{consistency}} + \gamma\,(1 - P_{\text{poison}}),
+\end{equation}
+with default weights $\alpha{=}0.40$, $\beta{=}0.35$, $\gamma{=}0.25$ ($\alpha{+}\beta{+}\gamma{=}1$). \rev{With these defaults, Eq.~(2) is exactly the Trust Index stated in the abstract, $T = 0.4\,F + 0.35\,C + 0.25\,(1-P)$.} The weights reflect signal reliability: NLI entailment (factuality) is the most precise, cross-document agreement (consistency) a strong corpus-integrity proxy, and heuristic poison signals are weighted lowest to limit false-positive influence. \rev{Section~V-B quantifies each component's contribution and shows that the operating point is stable under moderate perturbations of these manually chosen weights.}
+
+\textbf{Non-linear dampener.} A purely linear $T$ fails under high contamination: if the LLM ignores a poisoned passage and answers from the legitimate part, factuality and consistency stay high while $P_{\text{poison}}$ is large. Because $\gamma{=}0.25$, the poison term can reduce $T$ by at most $0.25$, so $T$ can exceed the threshold $\tau{=}0.5$ despite $P_{\text{poison}} {=}0.9$. We therefore apply a multiplicative dampener when $P_{\text{poison}}>0.70$:
+\begin{equation}
+\label{eq:damp}
+d(P) =
+\begin{cases}
+1.0 & P \le 0.70\\[2pt]
+1.0 - 0.4\,\dfrac{P-0.70}{0.30} & P > 0.70
+\end{cases}
+\qquad T_{\text{final}} = T\cdot d(P).
+\end{equation}
+The dampener is continuous at the threshold ($d(0.70){=}1$), bounded ($d(1.0){=}0.6$, i.e.\ at most $-40\%$), and proportional to contamination confidence. For the masking example ($T{=}0.59$, $P{=}0.9$), $d(0.9){=}0.733$ gives $T_{\text{final}}{=}0.43<\tau$, correctly flagging the response. For clean contexts the dampener is inactive; the multiplier falls smoothly with contamination, so only high-confidence poisoning is penalized. A secondary modifier reduces $T$ when the best retrieval similarity falls below $0.30$ (low-confidence retrieval). The final score maps to four trust levels (HIGH/MEDIUM/LOW/VERY~LOW); binary decision uses $\tau{=}0.5$.
+
+\textbf{LLM dependency.} Because $S_{\text{factuality}}$ is an NLI entailment score against the generated answer, it depends on \emph{generation style}, not only content. Hedged prefixes (e.g., ``\emph{Based on the provided context\dots}'') lower entailment and thus $T$, even for correct answers. This makes $\tau$ and the weights effectively LLM-specific hyperparameters (Section~\ref{sec:grid}).

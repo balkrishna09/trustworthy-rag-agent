@@ -1,0 +1,11 @@
+% Auto-generated: secure-coding SDLC use-case results
+\begin{table}[!ht]\caption{Secure-coding RAG assistant: poison detection by attack strategy (40 OWASP/CWE secure-coding rules; Llama~3.3~70B + MiniLM, $K{=}5$).}\label{tab:seccode}\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccccc}\toprule
+Strategy & Acc. & Prec. & Rec. & F1 & $\Delta$ \\\midrule
+Instruction injection & 97.5 & 85.7 & 100.0 & 92.3 & 0.542 \\
+Contradiction & 85.0 & n/a & 0.0 & 0.0 & 0.156 \\
+Subtle manipulation & 85.0 & n/a & 0.0 & 0.0 & 0.066 \\
+Entity swap & 72.5 & 29.2 & 58.3 & 38.9 & 0.291 \\
+Mixed & 86.2 & 100.0 & 8.3 & 15.4 & 0.163 \\
+\bottomrule\end{tabular}}\end{table}

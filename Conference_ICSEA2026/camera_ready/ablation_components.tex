@@ -1,0 +1,10 @@
+% Auto-generated: component ablation (RQ2) -- experiment_truthfulqa_llama3.3-70b_all-MiniLM-L6-v2_detection_20260509_154655.json
+\begin{table}[!ht]\caption{Component ablation of the Trust Index (RQ2): detection on the primary TruthfulQA mixed run (Llama~3.3~70B + MiniLM, $K{=}5$, 100 samples), recomputed by re-weighting stored per-sample signals at $\tau{=}0.5$.}\label{tab:ablation}\centering\small
+\begin{tabular}{lcccc}\toprule
+Configuration & Acc. & Prec. & Rec. & F1 \\\midrule
+Poison detector only & 91.0 & 80.0 & 53.3 & 64.0 \\
+NLI only & 84.0 & 0.0 & 0.0 & 0.0 \\
+NLI + Consistency & 84.0 & 40.0 & 13.3 & 20.0 \\
+Full Trust Index & 87.0 & 100.0 & 13.3 & 23.5 \\
+\textbf{Full + Dampener} & 91.0 & 100.0 & 40.0 & 57.1 \\
+\bottomrule\end{tabular}\end{table}

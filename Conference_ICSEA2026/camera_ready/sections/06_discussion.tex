@@ -1,0 +1,16 @@
+%==============================================================================
+\section{Discussion}
+\label{sec:discussion}
+%==============================================================================
+
+\rev{\textbf{Answering the research questions.} \emph{RQ1 (detection effectiveness):} overt poisoning is detected reliably in our tested setting (injection F1 96.8\%, mixed accuracy 91\% with 100\% precision), while in-place edits remain near-undetectable; effectiveness is governed by the visibility of attack artifacts, not by tuning (Section~V-A). \emph{RQ2 (effect of NLI):} NLI alone is a precision instrument, not a detector: the ablation (Section~V-B) shows it supplies the trust baseline and zero false positives, while the poison pathway and dampener supply recall. \emph{RQ3 (resilience):} verdicts are stable across runs, retrieval depths, and embeddings, and carry over to the secure-coding setting, but are bounded by generator style and domain shift (FEVER), which calibration mitigates (Sections~V-C to V-G). Together these quantify how far the Security-Reliability Gap of Section~I can be closed by an online trust layer.}
+
+\textbf{An architectural limit, not a tuning failure.} Entity-swap and subtle attacks change facts in place without textual artifacts. No amount of threshold tuning, reweighting, or deeper retrieval recovers them (Sections V-A, V-C); detecting them requires external world knowledge (e.g., a structured knowledge base). The 40\% mixed-strategy recall ceiling is therefore intrinsic to surface-signal detection.
+
+\textbf{False-positive spillover.} A clean query that retrieves a poisoned neighbor receives elevated poison probability -- security-correct (the environment is contaminated) but costly for precision; relevance-weighted aggregation mitigates but does not eliminate it.
+
+\textbf{Deployment in the SDLC.} The agent fits as a workflow gate: it can screen a secure-coding knowledge base before indexing and, at $\approx$17\,s per query, act as an asynchronous check in code review or CI rather than in the edit loop, with a human reviewing flagged retrievals.
+
+\textbf{Scope and validity considerations.} The poisoning strategies are rule-based and cover common attack patterns, but future work should also evaluate stronger optimization-crafted poisoned passages, including collision-style documents \cite{zou2024poisoned}\cite{zhong2023poisoning}. This study measures \emph{detection} of poisoned context before generation, while measuring whether the LLM adopts injected misinformation, i.e., attack success rate, requires end-to-end evaluation. \rev{Relatedly, the document-level ground truth counts a sample as missed even when the poisoned document never enters the top-$K$ context (Section~IV), so reported recall is a conservative lower bound.} The experiments use controlled sample sizes, with 15 poisoned samples per run, and the secure-coding study focuses on one curated domain. Because NLI scores depend on generation style, per-LLM calibration requires a small labeled clean set for each model.
+
+
