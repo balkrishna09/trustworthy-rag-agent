@@ -547,7 +547,7 @@ class Generator:
 
 ## 6. Module 3: Evaluation Agent — Can we trust this answer?
 
-This is the **core research component** of the thesis. It has three sub-components:
+This is the **core research component** of this work. It has three sub-components:
 
 ### Files
 
@@ -863,7 +863,7 @@ python run_experiment.py --all            # run everything
 
 ## 9. The Trust Index Formula
 
-This is the mathematical heart of the thesis:
+This is the mathematical heart of the approach:
 
 ```
 T = alpha x F + beta x C + gamma x (1 - P)
@@ -1076,4 +1076,4 @@ Results are saved as JSON files in `data/experiments/`. Each file contains:
 
 ---
 
-*This document was generated as part of the Trustworthy RAG Master's thesis project at Tampere University (TUNI).*
+*This document was generated as part of the Trustworthy RAG project at Tampere University (TUNI).*

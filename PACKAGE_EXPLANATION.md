@@ -375,7 +375,7 @@ Now let's see how each package fits into this architecture.
 **Role in your agent:**
 - **Results Visualization**: Plots experiment results
 - **Performance Charts**: Shows detection rates, trust scores
-- **Thesis Figures**: Creates figures for your thesis
+- **Paper Figures**: Creates figures for the paper
 
 **Where used:**
 - `experiments/` - Visualizing results

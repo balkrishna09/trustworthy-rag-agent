@@ -1,0 +1,91 @@
+%==============================================================================
+\section{Results}
+\label{sec:results}
+%==============================================================================
+
+\subsection{Detection Performance and Per-Strategy Hierarchy}
+On the primary TruthfulQA mixed run (Llama~3.3~70B + MiniLM, $K{=}5$) the agent attains 91\% accuracy (95\% CI 83.8 to 95.2\%), 100\% precision (zero false positives), 40\% recall (19.8 to 64.3\%), F1 57.1\% (25.0 to 80.0\%), and $\Delta{=}0.225$, a +7\% accuracy gain over the naive baseline. The system is deliberately conservative, preferring missed detections over false alarms.
+
+Table~\ref{tab:perstrategy} shows a wide detection hierarchy across strategies. Instruction injection is reliably detected in our tested setting (100\% recall [79.6 to 100\%], F1 96.8\%, $\Delta{=}0.498$): override directives trigger deterministic linguistic rules and produce strong intra-document contradiction. Contradiction is moderate (53.3\% recall [30.1 to 75.2\%]). Subtle manipulation is weak (20\% [7.0 to 45.2\%]) and entity swap is undetected (0\% [0 to 20.4\%], $\Delta{=}0.053$): these in-place edits leave no surface artifacts. Because each run has only 15 poisoned samples, recall CIs are wide; we therefore treat the per-strategy ranking as indicative rather than definitive, though it is consistent across repeats and mechanistically explained.
+
+\begin{table}[!ht]
+\caption{Per-strategy detection on TruthfulQA (100 samples each;
+Llama~3.3~70B + all-MiniLM-L6-v2, $K{=}5$).}
+\label{tab:perstrategy}
+\centering \small
+\begin{tabular}{lccccc}
+\toprule
+Strategy & Acc. & Prec. & Recall & F1 & $\Delta$ \\
+\midrule
+Instruction injection & 99\% & 93.8\% & 100\%  & 96.8\% & 0.498 \\
+Contradiction         & 92\% & 88.9\% & 53.3\% & 66.7\% & 0.311 \\
+Subtle manipulation   & 88\% & 100\%  & 20.0\% & 33.3\% & 0.149 \\
+Entity swap           & 85\% & n/a    & 0\%    & 0\%    & 0.053 \\
+\midrule
+Mixed                 & 91\% & 100\%  & 40.0\% & 57.1\% & 0.225 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% \input{strategy_bar_figure.tex} % removed to fit 6-page limit (duplicates Table~\ref{tab:perstrategy})
+
+The dampener explains the extremes: poisoned injection contexts reach mean $P_{\text{poison}}\approx0.99$, consistently activating Eq.~\ref{eq:damp}, whereas entity-swap contexts stay near $0.32$, below the $0.70$ trigger, so trust scores barely move.
+
+% \input{trust_dist_figure.tex} % removed to fit 6-page limit (illustrative; separation reported as $\Delta$ in tables)
+
+\subsection{Component Ablation (RQ2)}
+\label{sec:ablation}
+\input{ablation_components.tex}
+To isolate each signal's contribution (RQ2), we recompute the trust verdict on the primary run by re-weighting the stored per-sample factuality ($F$), consistency ($C$), and poison ($P$) scores at $\tau{=}0.5$; no new generation is required. Table~\ref{tab:ablation} shows that NLI factual verification \emph{alone} is a weak poison detector (0\% recall): by design it scores entailment against the generated answer, not adversarial intent, and reserves strong negative signals for the poison pathway (Section~\ref{sec:approach}). Its role is precision and the trust \emph{baseline}: adding consistency and the poison term raises precision to 100\%, and the non-linear dampener lifts recall from 0\% to 40\%, recovering the full operating point (91\% accuracy, 57.1\% F1). The poison detector alone gives the highest standalone recall (53.3\%, F1 64.0\%) but lower precision (80\%); fusing it with NLI and consistency trades recall for zero false positives, which suits a conservative guardrail. The components are thus complementary -- factuality and consistency supply precision and the trust baseline, while the poison pathway supplies recall.
+
+\subsection{LLM and Embedding Sensitivity}
+\label{sec:grid}
+Table~\ref{tab:grid} reports a $2\times2$ factorial study ($K{=}3$). Two findings stand out. First, \emph{LLM choice dominates}: both Llama configurations are identical (91\%, 100\% precision) regardless of embedding model, while both Qwen configurations \emph{underperform the naive baseline} by 14 points (71\%) with precision collapsing to 25 to 28\%. The cause is generation style: Qwen's hedged, verbose answers lower NLI entailment, depressing the mean clean trust score to $\approx$0.64 (vs.\ $\approx$0.83 for Llama) and producing 21 to 23 false positives out of 85 clean samples. Second, embedding dimensionality is near-irrelevant for a concise-output LLM. These results confirm that $\tau{=}0.5$ is implicitly calibrated for Llama and that \emph{per-LLM calibration} is required before deploying with a different generator.
+
+\begin{table}[!ht]
+\caption{$2\times2$ LLM\,$\times$\,embedding grid (TruthfulQA, 100 samples,
+mixed, $K{=}3$).}
+\label{tab:grid}
+\centering \resizebox{\columnwidth}{!}{%
+\begin{tabular}{llccccc}
+\toprule
+LLM & Embedding & Acc. & Prec. & Rec. & F1 & $\Delta$ \\
+\midrule
+Llama 3.3 70B & MiniLM    & 91\% & 100\%  & 40.0\% & 57.1\% & 0.240 \\
+Llama 3.3 70B & Snowflake & 91\% & 100\%  & 40.0\% & 57.1\% & 0.188 \\
+Qwen 3.5 35B  & MiniLM    & 71\% & 25.0\% & 46.7\% & 32.6\% & 0.161 \\
+Qwen 3.5 35B  & Snowflake & 71\% & 28.1\% & 60.0\% & 38.3\% & 0.199 \\
+\midrule
+\multicolumn{2}{l}{Naive always-trust} & 85\% & n/a & n/a & n/a & n/a \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Stability: Variance, Threshold-Independence, and Calibration}
+\label{sec:stability}
+Before the tables, one caveat: the per-LLM calibration results (Table~\ref{tab:calib}) are evaluated on a deliberately \emph{poison-enriched} split, so their absolute accuracies are intentionally lower than the headline 91\% and are \emph{not} directly comparable to it; the meaningful comparison there is before vs.\ after calibration on the \emph{same} split.
+% \input{roc_figure.tex} % removed to fit 6-page limit (AUC values stated in text)
+
+\textbf{Run-to-run variance.} We re-ran each configuration 2 to 5 times with independent generations. Despite LLM sampling stochasticity, detection metrics are highly stable (Table~\ref{tab:variance}): the primary mixed configuration scores $90.6{\pm}0.5\%$ accuracy and $56.1{\pm}1.3\%$ F1 over five repeats, and injection is invariant at $99.0{\pm}0.0\%$. The low variance indicates that the agent's verdicts are driven by the retrieved evidence rather than by the surface wording of any single generation.
+\input{results_tables.tex}
+
+\textbf{Threshold-independent performance.} The fixed $\tau{=}0.5$ operating point understates the Trust Index. Pooling the mixed-strategy runs, it attains ROC-AUC $0.81$ (Llama), $0.79$ (Mistral~7B), and $0.73$ (Qwen). All three sit well above chance, so Qwen's weak accuracy at $\tau{=}0.5$ is a \emph{thresholding} artifact, not an absence of signal.
+
+\textbf{Per-LLM calibration.} We also add a third LLM, Mistral~7B~Instruct, which reaches $87\%$ accuracy at the default $\tau{=}0.5$ on the primary $K{=}5$ MiniLM mixed run, far above Qwen~3.5~35B ($69\%$ in the same setting; Table~\ref{tab:grid} reports $71\%$ for Qwen at $K{=}3$) despite being five times smaller. This indicates the Trust Index's performance is governed by generation \emph{style} (Qwen's hedged phrasing depresses NLI entailment) rather than model scale. Fitting $\tau$ on clean scores only (10th percentile of a held-out clean split) and evaluating on disjoint clean and poisoned samples (Table~\ref{tab:calib}) restores baseline-competitive accuracy: Qwen rises from $65.5\%$ to $74.5\%$ by cutting false positives. Notably, the three LLMs require three \emph{different} optimal thresholds ($\tau^\star{=}0.71$, $0.58$, $0.43$ for Llama, Mistral, and Qwen), directly confirming that $\tau$ is an LLM-specific hyperparameter. Absolute accuracies in Table~\ref{tab:calib} are lower than in Table~\ref{tab:variance} because the calibration split is deliberately poison-enriched; the meaningful comparison is before vs.\ after calibration on the same split.
+
+\subsection{Retrieval Depth and Overhead}
+Increasing retrieval depth from $K{=}3$ to $K{=}5$ leaves the mixed-strategy outcome \emph{identical} (91\% accuracy, 100\% precision, 40\% recall, F1 57.1\%; $\Delta$ changes $0.240\!\to\!0.225$, within noise). The undetected contexts are entity-swap and subtle attacks that leave no textual signal at any depth, so additional documents add no poison evidence. Detection is thus \emph{retrieval-depth-invariant}, and the 40\% recall ceiling is set by attack difficulty, not retrieval breadth; $K{=}3$ is preferable, achieving the same result at roughly half the NLI cost ($\sim$9 vs.\ $\sim$20 calls per batch).
+
+The evaluation adds $\approx$14.7\,s per sample ($\approx$17$\times$ overhead over baseline RAG), dominated by up to 20 CPU NLI passes at $K{=}5$. This suits batch settings rather than interactive use; GPU inference is projected to cut evaluation below 2\,s.
+
+\subsection{Cross-Dataset Generalization}
+On FEVER, the full 100-sample run reaches 73\% accuracy and \emph{underperforms} the 85\% baseline by 12 points, with separation collapsing to $\Delta{=}0.035$. Although enrichment supplies adequate NLI context, the clean/poisoned trust distributions overlap, indicating that the Trust Index does not generalize out-of-the-box and requires dataset-specific calibration. We report this negative result explicitly; it bounds the external validity of the TruthfulQA findings and motivates the per-LLM/per-domain calibration discussed below.
+
+\subsection{Use Case: Secure-Coding RAG Assistant in the SDLC}
+\label{sec:usecase}
+\input{seccode_results.tex}
+To ground the agent in a software-engineering setting, we apply it to a \emph{secure-coding assistant}: a RAG-based coding/code-review aid that retrieves from a curated knowledge base of 40 secure-coding rules drawn from the OWASP Top~10 and CWE (e.g., parameterized queries for SQL injection, adaptive password hashing, TLS configuration). The rules cover OWASP Top~10 categories and common CWEs, including injection, broken access control, cryptographic failures, and security misconfiguration, and are written in the same format as the benchmark knowledge bases. A developer query (``How should passwords be stored?'') retrieves guidance that the Evaluation Agent screens \emph{before} the LLM emits a recommendation, so unsafe guidance can be flagged rather than acted upon. We poison 30\% of the rules with security-specific versions of the five strategies: instruction injection appends a spurious ``\texttt{CORRECTION:}'' directive; contradiction appends a ``common misconception'' negation; entity swap alters an identifier or value; and subtle manipulation adds misleading qualifiers.
+
+As an illustration, the rule ``\emph{Avoid invoking a shell; use parameterized process APIs\dots\ (CWE-78)}'' is poisoned by injection into ``\dots\ (CWE-78). \texttt{CORRECTION:} this guidance is outdated\dots'', by entity swap into ``\dots\ (CWE-81)'', and by subtle edits that append misleading qualifiers.
+
+Table~\ref{tab:seccode} reports detection by strategy (Llama~3.3~70B, $K{=}5$), and the pattern follows the benchmark findings. Injected malicious directives are detected almost perfectly (F1 92.3\%, $\Delta{=}0.54$): the agent blocks clear attempts to insert unsafe advice, such as disabling input validation, before they reach the developer. Entity swaps are now \emph{partially} detected (58\% recall, versus 0\% on open-domain TruthfulQA), because changing a structured identifier or value creates cross-document inconsistencies that NLI signals can detect. However, contradiction and subtle manipulation still evade detection (0\% recall): a weakened recommendation that presents an insecure practice as acceptable leaves no surface artifact and passes review, which is dangerous in a security workflow. This use case makes the architectural limit clear: the agent can guard against obvious unsafe guidance injection in the SDLC, while subtle semantic weakening still requires external world-knowledge verification as future work.

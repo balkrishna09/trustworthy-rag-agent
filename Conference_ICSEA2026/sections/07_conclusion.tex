@@ -1,0 +1,7 @@
+%==============================================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+%==============================================================================
+
+We presented an Evaluation Agent that adds a trust layer to RAG by combining NLI-based factual verification, multi-signal poison detection, and a Trust Index with a non-linear dampener. The agent detects clear poisoning well, including 100\% recall for instruction injection, 91\% mixed accuracy, and 100\% precision on TruthfulQA, and the secure-coding use case shows that it can help block injected unsafe advice in the SDLC. The results also show important boundaries: in-place edits are harder to detect, NLI-based trust scoring depends on the LLM used for generation, and the FEVER result shows that dataset-specific calibration is important for generalization. Future work includes evaluating the agent against stronger poisoning attacks, calibrating the Trust Index for different LLMs, adding world-knowledge sources such as Wikidata to address entity-swap attacks, accelerating evaluation with GPUs, and measuring misinformation \emph{adoption}, or attack success rate, not only detection. The implementation of the proposed approach, attack generator, and experimental artifacts are available for reproducibility.
+

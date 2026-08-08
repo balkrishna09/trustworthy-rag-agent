@@ -1,10 +1,10 @@
 # Trustworthy RAG Agent - Complete Project Documentation
 
 **Author:** Balkrishna Giri
-**Project:** Master's Thesis - Tampere University (TUNI)
+**Project:** ICSEA 2026 Conference Paper — Tampere University (TUNI)
 **Version:** 0.6.0
 **Last Updated:** May 2026
-**Status:** Thesis draft complete — all chapters written, all results verified and corrected; submitted to supervisor for review
+**Status:** Paper draft complete — all sections written, all results verified and corrected; submitted to supervisor for review
 
 ---
 
@@ -195,7 +195,7 @@ RAG Agent/
 |   +-- test_trust_index.py         # Trust index tests
 |   +-- test_poisoned_dataset.py    # Poisoned dataset tests
 |
-+-- figures/                        # Generated thesis charts (PNG, 300 DPI)
++-- figures/                        # Generated charts (PNG, 300 DPI)
 |   +-- fig1_strategy_detection_rate.png
 |   +-- fig2_trust_score_distribution.png
 |   +-- fig3_confusion_matrices.png
@@ -208,7 +208,7 @@ RAG Agent/
 +-- run_experiment.py               # Experiment CLI entry point
 +-- test_setup.py                   # Environment verification script
 +-- download_datasets.py            # Dataset download script
-+-- generate_charts.py              # Thesis chart generation script
++-- generate_charts.py              # Chart generation script
 +-- generate_doc.py                 # Documentation generator (MD -> DOCX)
 +-- requirements.txt                # Python dependencies
 +-- CLAUDE.md                       # AI assistant guidelines
@@ -626,7 +626,7 @@ class RAGResponse:
 
 ## 7. Module 4: Evaluation Agent
 
-This is the **core research component** of the thesis. The Evaluation Agent assesses the trustworthiness of RAG responses by combining three independent analysis components.
+This is the **core research component** of this work. The Evaluation Agent assesses the trustworthiness of RAG responses by combining three independent analysis components.
 
 ### Architecture Overview
 
@@ -1356,7 +1356,7 @@ All charts are generated automatically by `generate_charts.py`, which reads ever
 
 - **Entity Swap (0%):** Architectural blind spot. Entity swap replaces facts in-place (e.g., changing "14 million" to "41 million") without adding new text or changing document structure. There are no linguistic artifacts, no self-contradictions, and the document embedding remains close to the cluster centroid. The system makes zero correct positive predictions for this strategy, confirming it as a fundamental limitation requiring external world-knowledge for detection.
 
-**Thesis implication:** This chart directly answers RQ3 (resilience against knowledge poisoning). The system is highly effective against overt attacks (injection, contradiction) but vulnerable to stealthy in-place modifications (entity swap). This suggests future work should integrate external fact-checking databases.
+**Implication:** This chart directly answers RQ3 (resilience against knowledge poisoning). The system is highly effective against overt attacks (injection, contradiction) but vulnerable to stealthy in-place modifications (entity swap). This suggests future work should integrate external fact-checking databases.
 
 ---
 
@@ -1384,7 +1384,7 @@ All charts are generated automatically by `generate_charts.py`, which reads ever
 - **Poisoned scores have a wider spread** (0.37 to 0.85), reflecting the varying difficulty of detecting different poisoning strategies. The lower end captures detected injection/contradiction attacks, while the upper end reflects undetected entity swap attacks that score similarly to clean documents.
 - Most poisoned samples sit near or above the 0.5 threshold, which is why recall is moderate (40%) even though the mean trust score is lower.
 
-**Thesis implication:** This figure visually demonstrates the discriminative power of the Trust Index. The separation confirms that the weighted combination of factuality, consistency, and poison scores produces a meaningful reliability signal, even though the overlap zone indicates room for improvement.
+**Implication:** This figure visually demonstrates the discriminative power of the Trust Index. The separation confirms that the weighted combination of factuality, consistency, and poison scores produces a meaningful reliability signal, even though the overlap zone indicates room for improvement.
 
 ---
 
@@ -1416,7 +1416,7 @@ The rows represent the **actual condition** (Clean or Poisoned) and the columns 
 - **73% accuracy, below the 85% naive baseline:** The full FEVER run underperforms the baseline by 12 percentage points. FEVER claims are short and formulaic, causing the NLI model to produce unreliable scores with a high false-positive rate.
 - This generalisation failure indicates that the Trust Index requires domain-specific calibration for short factual-claim corpora before production use on FEVER-style data.
 
-**Thesis implication:** The side-by-side comparison reveals how document length and domain affect detection quality. TruthfulQA (longer Q+A pairs) produces cleaner separations than FEVER (short factual claims), informing deployment recommendations.
+**Implication:** The side-by-side comparison reveals how document length and domain affect detection quality. TruthfulQA (longer Q+A pairs) produces cleaner separations than FEVER (short factual claims), informing deployment recommendations.
 
 ---
 
@@ -1439,7 +1439,7 @@ The rows represent the **actual condition** (Clean or Poisoned) and the columns 
 
 **Why the difference?** TruthfulQA knowledge base documents are constructed as "question + best_answer" pairs (typically 30-60 words), giving BART-MNLI enough context for reliable entailment/contradiction classification. FEVER documents, even after enrichment, are shorter and more formulaic, leading to noisier NLI outputs.
 
-**Thesis implication:** This chart directly supports a key research finding: RAG evaluation quality is sensitive to document length and richness. For production deployments, enriching documents with additional context (similar to our FEVER enrichment strategy) improves evaluation reliability.
+**Implication:** This chart directly supports a key research finding: RAG evaluation quality is sensitive to document length and richness. For production deployments, enriching documents with additional context (similar to our FEVER enrichment strategy) improves evaluation reliability.
 
 ---
 
@@ -1473,7 +1473,7 @@ The rows represent the **actual condition** (Clean or Poisoned) and the columns 
 - **Consistency-heavy and poison-heavy improve recall to 22.2% and F1 to 36.4%**, double the other configurations, by pushing more borderline poisoned samples below the trust threshold.
 - The ablation results are **exploratory**, not definitive. The small number of poisoned examples (9 in 60 samples) means results are sensitive to individual samples. The default configuration is retained as the primary operating point because it is the system design validated in the main 100-sample experiment, not because this ablation proves it optimal.
 
-**Thesis implication:** The ablation indicates that elevating consistency or poison signal weights can improve recall on this subset. A larger ablation study would be needed to establish globally optimal weights.
+**Implication:** The ablation indicates that elevating consistency or poison signal weights can improve recall on this subset. A larger ablation study would be needed to establish globally optimal weights.
 
 ---
 
@@ -1505,7 +1505,7 @@ The rows represent the **actual condition** (Clean or Poisoned) and the columns 
 - **Poisoned samples** have a bimodal distribution: some cluster near 0.0-0.2 (undetected attacks, mainly entity swap) while others spike to 0.5-1.0 (detected injection and contradiction attacks).
 - **This component shows the clearest separation.** The bimodal pattern in the poisoned distribution directly corresponds to the strategy-level detection rates in Figure 1.
 
-**Thesis implication:** This figure reveals which components contribute most to the Trust Index's discriminative power. Poison Probability provides the sharpest signal, Factuality provides a consistent baseline, and Consistency adds moderate supplementary information. The overlapping distributions in Factuality and Consistency explain why the Trust Index needs all three components working together -- no single component is sufficient alone.
+**Implication:** This figure reveals which components contribute most to the Trust Index's discriminative power. Poison Probability provides the sharpest signal, Factuality provides a consistent baseline, and Consistency adds moderate supplementary information. The overlapping distributions in Factuality and Consistency explain why the Trust Index needs all three components working together -- no single component is sufficient alone.
 
 ---
 
@@ -1531,7 +1531,7 @@ The rows represent the **actual condition** (Clean or Poisoned) and the columns 
 
 - **Clean scores are consistent** across all four experiments (0.792 to 0.829), confirming that the system's behavior on clean documents is stable regardless of the poisoning strategy applied to other documents in the same knowledge base.
 
-**Thesis implication:** This chart provides the most direct visual answer to RQ3. The decreasing gap from Injection to Entity Swap traces a clear difficulty curve for poisoning attacks. It also shows that the trust threshold of 0.5 is well-calibrated for injection and contradiction but may need to be raised (e.g., to 0.65) for deployments where subtle and entity swap attacks are expected.
+**Implication:** This chart provides the most direct visual answer to RQ3. The decreasing gap from Injection to Entity Swap traces a clear difficulty curve for poisoning attacks. It also shows that the trust threshold of 0.5 is well-calibrated for injection and contradiction but may need to be raised (e.g., to 0.65) for deployments where subtle and entity swap attacks are expected.
 
 ---
 
@@ -1935,8 +1935,8 @@ Without the dampener, a query with high factuality (0.9) and high consistency (0
 
 ### Version 0.6.0 (May 2026) - CURRENT
 
-**Completed - Full Thesis Draft Verified & Submitted to Supervisor:**
-- All thesis chapters (ch1–ch8) written, cross-checked, and corrected
+**Completed - Full Paper Draft Verified & Submitted to Supervisor:**
+- All paper sections written, cross-checked, and corrected
 - Final validated results throughout (100-sample main/per-strategy, 60-sample ablation)
 - TruthfulQA main (K=5): 91% accuracy, 100% precision, 40% recall, 57.1% F1, +7% over baseline
 - FEVER full run: 73% accuracy, −12% vs baseline (generalisation limitation documented)
@@ -1962,7 +1962,7 @@ Without the dampener, a query with high factuality (0.9) and high consistency (0
 
 ### Version 0.4.0 (February 2026)
 
-**Completed - Thesis Visualizations:**
+**Completed - Visualizations:**
 - 7 publication-quality charts generated automatically from experiment data (300 DPI)
 - Figure 1: Per-strategy detection rate bar chart
 - Figure 2: Trust score distribution box plots (clean vs poisoned)

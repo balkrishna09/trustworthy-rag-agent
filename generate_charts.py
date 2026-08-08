@@ -1,7 +1,7 @@
 """
-Generate Thesis Visualization Charts
+Generate Visualization Charts
 Reads experiment results from data/experiments/ and produces
-publication-quality figures for the thesis.
+publication-quality figures for the paper.
 
 Usage:
     python generate_charts.py
@@ -39,7 +39,7 @@ DPI = 300
 FIG_WIDTH = 10
 FIG_HEIGHT = 6
 
-# Thesis-quality style
+# Publication-quality style
 plt.rcParams.update({
     'font.size': 12,
     'axes.titlesize': 14,
@@ -462,7 +462,7 @@ def save_figure(fig, filename):
 
 def main():
     print("=" * 60)
-    print("THESIS CHART GENERATION")
+    print("CHART GENERATION")
     print("=" * 60)
     print(f"Reading experiments from: {EXPERIMENTS_DIR}")
     print(f"Saving figures to: {FIGURES_DIR}")

@@ -144,7 +144,7 @@ The poison detector combines multiple signals:
     \item \textbf{Linguistic patterns:} instruction override phrases, contradiction markers, format-injection traces.
     \item \textbf{Structural anomalies:} excessive uppercase, suspicious repetition, abnormal tokens.
     \item \textbf{Intra-document consistency:} NLI between first and second halves of the same document.
-    \item \textbf{Cross-document consistency:} pairwise contradiction checks among retrieved documents.
+    \item \textbf{Cross-document consistency:} pairwise contradiction checks among retrieved documents. Contradiction signals are attributed only to the specific document pair involved via scoped signal indices, preventing a single poisoned document from inflating the poison probability of uninvolved clean documents in the same batch.
     \item \textbf{Semantic outlier analysis:} embedding-based deviation from batch centroid.
 \end{enumerate}
 
