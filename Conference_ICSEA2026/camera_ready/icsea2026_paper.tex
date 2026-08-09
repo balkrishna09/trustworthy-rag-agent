@@ -1,0 +1,62 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{soul} % revision highlighting for camera-ready review
+\sethlcolor{yellow}
+\newcommand{\rev}[1]{\hl{#1}} % change to \newcommand{\rev}[1]{#1} to hide highlights in the final version
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{orcidlink}
+\usepackage{float}
+
+\renewcommand{\figurename}{Figure} % IARIA style: "Figure 1." captions, not "Fig. 1."
+\renewcommand{\IEEEkeywordsname}{Keywords} % IARIA style: "Keywords" heading
+
+\begin{document}
+
+\title{\fontsize{14}{16.8}\selectfont\bfseries Trustworthy RAG: An Evaluation Agent for Detecting Misinformation and Knowledge Poisoning in Generative AI Systems}
+
+\author{
+\IEEEauthorblockN{
+Balkrishna Giri\,\orcidlink{0009-0006-0576-7392},
+Md Toufique Hasan\,\orcidlink{0009-0005-8907-9898},
+Jussi Rasku\,\orcidlink{0000-0002-4401-8013},
+Muhammad Waseem\,\orcidlink{0000-0001-7488-2577},
+and Pekka Abrahamsson\,\orcidlink{0000-0002-4360-2226}
+}
+\IEEEauthorblockA{
+Faculty of Information Technology and Communication Sciences, Tampere University\\
+Tampere, Finland\\
+\resizebox{0.95\textwidth}{!}{{\ttfamily e-mail: \{balkrishna.giri, mdtoufique.hasan, jussi.rasku, muhammad.waseem, pekka.abrahamsson\}@tuni.fi}}
+}
+}
+
+\maketitle
+
+\begin{abstract}
+Retrieval-Augmented Generation (RAG) grounds \rev{Large Language Model (LLM)} outputs in external knowledge, but RAG systems usually trust whatever they retrieve, creating a \emph{Security-Reliability Gap}: high semantic relevance does not guarantee factual truth. Adversaries exploit this through \emph{knowledge poisoning}, inserting malicious documents to cause targeted misinformation. We propose an \emph{Evaluation Agent}, middleware that combines Natural Language Inference (NLI) factual verification, a five-signal poison detector with relevance-weighted aggregation, and a \emph{Trust Index} $T = 0.4\,F + 0.35\,C + 0.25\,(1-P)$ with a non-linear dampener for high-contamination contexts. \rev{On TruthfulQA with Llama~3.3~70B, the agent reaches 91\% accuracy and 100\% precision, with 100\% recall on instruction injection, while in-place edits, such as entity swaps, remain hard to detect. Across three LLMs the Trust Index stays discriminative, with a Receiver Operating Characteristic Area Under the Curve (ROC-AUC) of 0.73 to 0.81; generation style matters more than model size, and per-LLM threshold calibration restores baseline-competitive accuracy, whereas a weaker FEVER result shows that cross-dataset generalization requires domain-specific calibration. In a software-engineering use case, a secure-coding assistant over guidance from the Open Worldwide Application Security Project (OWASP) Top~10 and the Common Weakness Enumeration (CWE), the agent reliably blocks instruction injection of unsafe advice (F1 92\%), while subtle semantic weakening remains hard.} Throughout, the agent measures \emph{detection} of poisoned context before generation, not whether the LLM ultimately adopts the injected misinformation. \rev{We release the proposed approach, attack generator, and experimental artifacts (Section~I).}
+\end{abstract}
+
+\begin{IEEEkeywords}
+\rev{retrieval-augmented generation (RAG); knowledge poisoning; trustworthy AI; misinformation detection; LLM security; natural language inference (NLI); AI safety.}
+\end{IEEEkeywords}
+
+\input{sections/01_introduction.tex}
+\input{sections/02_background.tex}
+\input{sections/03_approach.tex}
+\input{sections/04_experimental_design.tex}
+\input{sections/05_results.tex}
+\input{sections/06_discussion.tex}
+\input{sections/07_conclusion.tex}
+\input{sections/08_references.tex}
+
+\end{document}

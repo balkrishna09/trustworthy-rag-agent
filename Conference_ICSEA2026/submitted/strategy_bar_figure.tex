@@ -1,0 +1,11 @@
+% Auto-generated: per-strategy detection bar chart (requires pgfplots)
+\begin{figure}[t]\centering\begin{tikzpicture}
+\begin{axis}[width=\columnwidth,height=0.62\columnwidth,ybar,bar width=6pt,
+    ymin=0,ymax=105,ylabel={Score (\%)},symbolic x coords={Injection,Contradict.,Subtle,Entity swap,Mixed},
+    xtick=data,x tick label style={font=\footnotesize,rotate=20,anchor=east},
+    legend pos=north east,legend style={font=\footnotesize},ymajorgrids,font=\small]
+\addplot[fill=blue!55] coordinates {(Injection,100.0) (Contradict.,53.3) (Subtle,20.0) (Entity swap,3.3) (Mixed,40.0)};
+\addplot[fill=orange!70] coordinates {(Injection,96.8) (Contradict.,68.1) (Subtle,33.3) (Entity swap,5.9) (Mixed,56.1)};
+\legend{Recall, F1}
+\end{axis}\end{tikzpicture}
+\caption{Per-strategy detection on TruthfulQA (Llama~3.3~70B + MiniLM, $K{=}5$): the hierarchy injection $\gg$ contradiction $\gg$ subtle $\approx$ entity swap.}\label{fig:strategybar}\end{figure}
