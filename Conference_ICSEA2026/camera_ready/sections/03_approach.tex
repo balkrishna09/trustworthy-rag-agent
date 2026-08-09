@@ -9,40 +9,51 @@ The Evaluation Agent is defensive middleware positioned between retrieval and th
 
 \begin{figure}[!ht]
 \centering
-\resizebox{0.55\columnwidth}{!}{%
+\resizebox{0.65\columnwidth}{!}{%
 \begin{tikzpicture}[
-node distance=0.32cm,
 box/.style={rectangle, draw=black!70, rounded corners=3pt,
-minimum width=2.7cm, minimum height=0.62cm,
+minimum width=2.6cm, minimum height=0.62cm,
 text centered, align=center, font=\scriptsize},
 mod/.style={rectangle, draw=black!70, rounded corners=3pt, fill=blue!10,
-minimum width=2.4cm, minimum height=0.62cm,
+minimum width=2.6cm, minimum height=0.62cm,
 text centered, align=center, font=\scriptsize},
 outbox/.style={rectangle, draw=black!70, rounded corners=3pt, fill=green!12,
-minimum width=2.9cm, minimum height=0.62cm,
+minimum width=4.6cm, minimum height=0.62cm,
 text centered, align=center, font=\scriptsize},
+stage/.style={rectangle, draw=black!45, dashed, rounded corners=4pt, inner sep=4pt},
 arr/.style={-{Stealth}, thick, black!60}
 ]
-\node[box, fill=black!8, minimum width=3.8cm] (inp)
-{Input: query, answer, docs,\ scores, embeddings};
+\node[box, fill=black!8, minimum width=6.4cm] (inp) at (0,0)
+{Input: query, retrieved docs, scores, embeddings};
 
-\node[mod, below=0.45cm of inp] (nli) {NLI Verifier};
-\node[mod, below=0.30cm of nli] (pois) {Poison Detector};
-\node[mod, below=0.30cm of pois] (cons) {Consistency Estimator};
-\node[box, fill=orange!15, below=0.45cm of cons, minimum width=2.9cm] (trust)
-{Trust Index\\ Calculator};
+\node[font=\tiny\itshape] (s1lab) at (0,-0.98) {Stage 1: pre-generation screening};
+\node[mod] (pois) at (-1.6,-1.6) {Poison Detector};
+\node[mod] (cons) at (1.6,-1.6) {Consistency Estimator};
 
-\node[outbox, below=0.45cm of trust] (result)
-{EvaluationResult\\ score, level, warnings};
+\node[box, fill=black!8, minimum width=3.4cm] (gen) at (0,-2.75) {LLM generation (answer)};
 
-\draw[arr] (inp.south) -- (nli.north);
-\draw[arr] (nli.south) -- (pois.north);
-\draw[arr] (pois.south) -- (cons.north);
-\draw[arr] (cons.south) -- (trust.north);
+\node[font=\tiny\itshape] (s2lab) at (0,-3.55) {Stage 2: post-generation verification};
+\node[mod, minimum width=3.4cm] (nli) at (0,-4.15) {NLI Verifier (docs vs.\ answer)};
+
+\node[box, fill=orange!15, minimum width=2.9cm] (trust) at (0,-5.5)
+{Trust Index Calculator};
+\node[outbox] (result) at (0,-6.5)
+{EvaluationResult: score, level, warnings};
+
+\begin{scope}[on background layer]
+\node[stage, fit=(s1lab)(pois)(cons)] (s1) {};
+\node[stage, fit=(s2lab)(nli)] (s2) {};
+\end{scope}
+
+\draw[arr] (inp.south) -- (s1.north);
+\draw[arr] (s1.south) -- (gen.north);
+\draw[arr] (gen.south) -- (s2.north);
+\draw[arr] (s2.south) -- (trust.north);
+\draw[arr] (s1.west) -- ++(-0.55,0) |- (trust.west);
 \draw[arr] (trust.south) -- (result.north);
 
 \end{tikzpicture}}
-\caption{Processing pipeline of the Evaluation Agent. Color coding: gray denotes input data, blue the three analysis modules, orange the score-fusion step, and green the output verdict.}
+\caption{\rev{Two-stage pipeline of the Evaluation Agent: poison detection and consistency screening run before generation (Stage~1), NLI verification of the generated answer runs after it (Stage~2). Color coding: gray input and generation steps, blue analysis modules, orange score fusion, green output verdict.}}
 \label{fig:arch}
 \end{figure}
 
@@ -78,7 +89,7 @@ d(P) =
 1.0 & P \le 0.70\\[2pt]
 1.0 - 0.4\,\dfrac{P-0.70}{0.30} & P > 0.70
 \end{cases}
-\qquad T_{\text{final}} = T\cdot d(P).
+\quad T_{\text{final}} = T\cdot d(P).
 \end{equation}
 The dampener is continuous at the threshold ($d(0.70){=}1$), bounded ($d(1.0){=}0.6$, i.e.\ at most $-40\%$), and proportional to contamination confidence. For the masking example ($T{=}0.59$, $P{=}0.9$), $d(0.9){=}0.733$ gives $T_{\text{final}}{=}0.43<\tau$, correctly flagging the response. For clean contexts the dampener is inactive; the multiplier falls smoothly with contamination, so only high-confidence poisoning is penalized. A secondary modifier reduces $T$ when the best retrieval similarity falls below $0.30$ (low-confidence retrieval). The final score maps to four trust levels (HIGH/MEDIUM/LOW/VERY~LOW); binary decision uses $\tau{=}0.5$.
 
