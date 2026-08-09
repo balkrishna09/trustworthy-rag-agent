@@ -68,6 +68,7 @@ Qwen 3.5 35B  & Snowflake & 71\% & 28.1\% & 60.0\% & 38.3\% & 0.199 \\
 % \input{roc_figure.tex} % removed to fit 6-page limit (AUC values stated in text)
 
 \textbf{Run-to-run variance.} We re-ran each configuration 2 to 5 times with independent generations. Despite LLM sampling stochasticity, detection metrics are highly stable (Table~\ref{tab:variance}): the primary mixed configuration scores $90.6{\pm}0.5\%$ accuracy and $56.1{\pm}1.3\%$ F1 over five repeats, and injection is invariant at $99.0{\pm}0.0\%$. The low variance indicates that the agent's verdicts are driven by the retrieved evidence rather than by the surface wording of any single generation.
+\input{run_to_run.tex}
 
 \textbf{Threshold-independent performance.} The fixed $\tau{=}0.5$ operating point understates the Trust Index. Pooling the mixed-strategy runs, it attains \rev{a Receiver Operating Characteristic Area Under the Curve (ROC-AUC) of} $0.81$ (Llama), $0.79$ (Mistral~7B), and $0.73$ (Qwen). All three sit well above chance, so Qwen's weak accuracy at $\tau{=}0.5$ is a \emph{thresholding} artifact, not an absence of signal.
 

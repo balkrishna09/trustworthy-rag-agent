@@ -1,0 +1,64 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{orcidlink}
+\usepackage{float}
+
+\begin{document}
+
+\title{Trustworthy RAG: An Evaluation Agent for Detecting Misinformation and Knowledge Poisoning in Generative AI Systems}
+
+\author{
+\IEEEauthorblockN{
+Balkrishna Giri,
+Md Toufique Hasan\,\orcidlink{0009-0005-8907-9898},
+Jussi Rasku\,\orcidlink{0000-0002-4401-8013},
+Muhammad Waseem\,\orcidlink{0000-0001-7488-2577},
+and Pekka Abrahamsson\,\orcidlink{0000-0002-4360-2226}
+}
+\IEEEauthorblockA{
+Faculty of Information Technology and Communication Sciences, Tampere University\\
+Tampere, Finland\\
+\resizebox{0.95\textwidth}{!}{{\ttfamily e-mail: \{balkrishna.giri, mdtoufique.hasan, jussi.rasku, muhammad.waseem, pekka.abrahamsson\}@tuni.fi}}
+}
+}
+
+\maketitle
+
+\begin{abstract}
+Retrieval-Augmented Generation (RAG) grounds large language model (LLM) outputs in external knowledge, but RAG systems usually trust whatever they retrieve, creating a \emph{Security-Reliability Gap}: high semantic relevance does not guarantee factual truth. Adversaries exploit this through \emph{knowledge poisoning}, inserting malicious documents to cause targeted misinformation. We propose an \emph{Evaluation Agent}, middleware that combines Natural Language Inference (NLI) factual verification, a five-signal poison detector with relevance-weighted aggregation, and a \emph{Trust Index} $T = 0.4\,F + 0.35\,C + 0.25\,(1-P)$ with a non-linear dampener for high-contamination contexts. On TruthfulQA with Llama~3.3~70B it reaches 91\% accuracy and 100\% precision (+7 points over a naive always-trust baseline), with 100\% recall on instruction injection, while entity-swap and subtle in-place edits remain hard (few surface signals). Across three LLMs, the results show that the Trust Index depends on the generator. Generation style matters more than model size: a 7B model reaches 87\% accuracy, while a 35B model reaches 69\% (both at the default $\tau{=}0.5$, $K{=}5$, mixed TruthfulQA) because its hedged outputs cause false positives. The Trust Index remains discriminative for all models, with ROC-AUC from 0.73 to 0.81, and per-LLM threshold calibration restores baseline-competitive accuracy. Results are stable across repeated runs ($90.6{\pm}0.5\%$ over five runs), and increasing retrieval depth from $K{=}3$ to $K{=}5$ did not change the main metrics in the mixed TruthfulQA setting. A weaker FEVER result indicates that cross-dataset generalization requires dataset- and domain-specific calibration. In a software-engineering use case, a secure-coding assistant over OWASP/CWE guidance, the agent reliably blocks \emph{instruction-injection} of unsafe advice (F1 92\%), while contradiction, subtle weakening, and the mixed setting remain hard. Throughout, the agent measures \emph{detection} of poisoned context before generation, not whether the LLM ultimately adopts the injected misinformation. We release the proposed approach, attack generator, and experimental artifacts\footnote{\url{https://github.com/GPT-Laboratory/TrustworthyRAG}}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+retrieval-augmented generation (RAG),
+knowledge poisoning,
+trustworthy AI,
+misinformation detection,
+LLM security,
+natural language inference (NLI),
+AI safety
+\end{IEEEkeywords}
+
+\input{sections/01_introduction.tex}
+\input{sections/02_background.tex}
+\input{sections/03_approach.tex}
+\input{sections/04_experimental_design.tex}
+\input{sections/05_results.tex}
+\input{sections/06_discussion.tex}
+\input{sections/07_conclusion.tex}
+\section*{Acknowledgment}
+This paper is based on research supported in part by the AI Native Software Engineering (ANSE) project funded by Business Finland. The authors gratefully acknowledge this support. The authors declare no conflicts of interest related to this work.
+\input{sections/08_references.tex}
+
+\end{document}

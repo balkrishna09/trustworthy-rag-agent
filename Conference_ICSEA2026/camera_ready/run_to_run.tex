@@ -1,0 +1,10 @@
+% Auto-generated: run-to-run variance (Llama 3.3 70B + MiniLM, K=5)
+\begin{table}[!ht]\caption{Run-to-run variance: mean$\pm$std over $R$ independent repeats (TruthfulQA, Llama~3.3~70B + MiniLM, $K{=}5$, 100 samples/run).}\label{tab:variance}\centering\small
+\begin{tabular}{lcccc}\toprule
+Strategy & $R$ & Acc.\,(\%) & Recall\,(\%) & F1\,(\%) \\\midrule
+Instruction injection & 2 & 99.0$\pm$0.0 & 100.0$\pm$0.0 & 96.8$\pm$0.0 \\
+Contradiction & 2 & 92.5$\pm$0.5 & 53.3$\pm$0.0 & 68.1$\pm$1.4 \\
+Subtle manip. & 2 & 88.0$\pm$0.0 & 20.0$\pm$0.0 & 33.3$\pm$0.0 \\
+Entity swap & 2 & 85.0$\pm$0.0 & 3.3$\pm$3.3 & 5.9$\pm$5.9 \\
+Mixed & 5 & 90.6$\pm$0.5 & 40.0$\pm$0.0 & 56.1$\pm$1.3 \\
+\bottomrule\end{tabular}\end{table}
